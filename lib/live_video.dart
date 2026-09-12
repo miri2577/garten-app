@@ -104,20 +104,32 @@ class _LiveVideoState extends State<LiveVideo> with RouteAware {
     }
   }
 
-  // Vollbild kommt darüber -> pausieren; kehrt zurück -> weiterspielen.
+  // Vollbild kommt darüber -> Decoder KOMPLETT FREIGEBEN (nicht nur pausieren),
+  // damit das Vollbild den einzigen Hardware-Decoder bekommt. Zurück -> neu starten.
   @override
-  void didPushNext() => _pause();
+  void didPushNext() => _release();
   @override
-  void didPopNext() => _resume();
+  void didPopNext() => _restart();
 
-  void _pause() {
-    _exo?.pause();
-    _player?.pause();
+  Future<void> _release() async {
+    _liveTimer?.cancel();
+    await _exo?.dispose();
+    _exo = null;
+    await _player?.dispose();
+    _player = null;
+    _mk = null;
+    if (mounted) setState(() => _ready = false);
   }
 
-  void _resume() {
-    _exo?.play();
-    _player?.play();
+  Future<void> _restart() async {
+    if (_ready || _exo != null || _player != null) return;
+    if (mounted) {
+      setState(() {
+        _ready = false;
+        _failed = false;
+      });
+    }
+    await _start();
   }
 
   @override

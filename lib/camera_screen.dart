@@ -128,6 +128,7 @@ class _CameraScreenState extends State<CameraScreen> {
           }
         }
       });
+      _mcRetries = 0; // erfolgreicher Start -> Zähler zurücksetzen
       if (mounted) setState(() => _playing = true);
     } catch (e) {
       _handleExoError('$e');
@@ -142,29 +143,43 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   bool _fallingBack = false;
+  int _mcRetries = 0;
 
-  /// Bei einem Wiedergabefehler im Auto-Modus mit HD automatisch auf SD zurück
-  /// (dieses Gerät kann die HD-Auflösung nicht dekodieren). Sonst Fehler zeigen.
+  Future<void> _disposeExo() async {
+    _exo?.removeListener(_exoListener);
+    await _exo?.dispose();
+    _exo = null;
+  }
+
+  /// Fehlerbehandlung:
+  /// - HD überfordert den Decoder (EXCEEDS_CAPABILITIES) -> dauerhaft merken, auf SD.
+  /// - Sonst transienter Decoder-Fehler (z.B. Kachel gibt den einzigen Hardware-
+  ///   Decoder gerade erst frei) -> kurz warten und erneut versuchen.
   Future<void> _handleExoError(String desc) async {
     if (_fallingBack) return;
-    if (_mode == 'auto' && _activeQuality == 'hd') {
-      // HD von diesem Decoder nicht unterstützt? Dann dauerhaft merken.
-      if (desc.contains('EXCEEDS_CAPABILITIES') ||
-          desc.contains('MediaCodecVideoRenderer')) {
-        await HaConfig.setHdUnsupported();
-      }
+    final capExceeded = desc.contains('EXCEEDS_CAPABILITIES');
+
+    if (_mode == 'auto' && _activeQuality == 'hd' && capExceeded) {
+      await HaConfig.setHdUnsupported();
       _fallingBack = true;
       _activeQuality = 'sd';
-      _exo?.removeListener(_exoListener);
-      await _exo?.dispose();
-      _exo = null;
-      // Kurze Pause, damit der (gescheiterte) HD-Decoder freigegeben wird,
-      // bevor der SD-Player startet — sonst hängt dessen initialize().
-      await Future.delayed(const Duration(milliseconds: 500));
+      await _disposeExo();
+      await Future.delayed(const Duration(milliseconds: 600));
       await _startExo();
       _fallingBack = false;
       return;
     }
+
+    if (!capExceeded && _mcRetries < 4) {
+      _mcRetries++;
+      _fallingBack = true;
+      await _disposeExo();
+      await Future.delayed(const Duration(milliseconds: 700));
+      await _startExo();
+      _fallingBack = false;
+      return;
+    }
+
     if (!_error && mounted) {
       setState(() {
         _error = true;

@@ -98,6 +98,20 @@ class HaConfig {
     await prefs.setString(_kQuality, q);
   }
 
+  /// Merkt sich, ob dieses Gerät HD (2K) nicht dekodieren kann. Dann startet der
+  /// Auto-Modus direkt mit SD (spart den scheiternden HD-Versuch, der auf
+  /// schwachen Decodern die Wiedergabe blockiert).
+  static const _kHdUnsupported = 'ha_hd_unsupported';
+  static Future<bool> hdUnsupported() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kHdUnsupported) ?? false;
+  }
+
+  static Future<void> setHdUnsupported() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kHdUnsupported, true);
+  }
+
   static String _stripSlash(String s) =>
       s.endsWith('/') ? s.substring(0, s.length - 1) : s;
 

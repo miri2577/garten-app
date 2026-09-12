@@ -67,8 +67,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     if (_useExo) {
-      _activeQuality = _mode == 'sd' ? 'sd' : 'hd';
-      _startExo();
+      _initExo();
     } else {
       _player = Player();
       _mkController = VideoController(_player!);
@@ -78,6 +77,19 @@ class _CameraScreenState extends State<CameraScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _backFocus.requestFocus();
     });
+  }
+
+  /// Startqualität bestimmen: SD/HD fix, oder Auto — und im Auto-Modus direkt SD,
+  /// wenn dieses Gerät HD schon einmal nicht dekodieren konnte.
+  Future<void> _initExo() async {
+    if (_mode == 'sd') {
+      _activeQuality = 'sd';
+    } else if (_mode == 'hd') {
+      _activeQuality = 'hd';
+    } else {
+      _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+    }
+    await _startExo();
   }
 
   String get _qualityLabel {
@@ -101,7 +113,8 @@ class _CameraScreenState extends State<CameraScreen> {
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       _exo = c;
-      await c.initialize();
+      // Timeout gegen Endlos-Laden (z.B. hängender Decoder nach HD-Fehlschlag).
+      await c.initialize().timeout(const Duration(seconds: 20));
       // ExoPlayer startet bei Live-HLS an der Live-Kante. KEIN seekTo hier —
       // ein Sprung ans Ende direkt nach initialize() blockiert die Wiedergabe.
       await c.play();
@@ -135,11 +148,19 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _handleExoError(String desc) async {
     if (_fallingBack) return;
     if (_mode == 'auto' && _activeQuality == 'hd') {
+      // HD von diesem Decoder nicht unterstützt? Dann dauerhaft merken.
+      if (desc.contains('EXCEEDS_CAPABILITIES') ||
+          desc.contains('MediaCodecVideoRenderer')) {
+        await HaConfig.setHdUnsupported();
+      }
       _fallingBack = true;
       _activeQuality = 'sd';
       _exo?.removeListener(_exoListener);
       await _exo?.dispose();
       _exo = null;
+      // Kurze Pause, damit der (gescheiterte) HD-Decoder freigegeben wird,
+      // bevor der SD-Player startet — sonst hängt dessen initialize().
+      await Future.delayed(const Duration(milliseconds: 500));
       await _startExo();
       _fallingBack = false;
       return;
@@ -209,7 +230,13 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _retry() async {
     if (_useExo) {
       _fallingBack = false;
-      _activeQuality = _mode == 'sd' ? 'sd' : 'hd';
+      if (_mode == 'sd') {
+        _activeQuality = 'sd';
+      } else if (_mode == 'hd') {
+        _activeQuality = 'hd';
+      } else {
+        _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+      }
       _exo?.removeListener(_exoListener);
       await _exo?.dispose();
       _exo = null;

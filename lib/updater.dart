@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -31,6 +32,9 @@ class Updater {
 
   static bool get configured => _user.isNotEmpty && _pass.isNotEmpty;
 
+  /// Letzter Prüfstatus (nur für Diagnose in der UI).
+  static String lastStatus = 'noch nicht geprüft';
+
   static Map<String, String> get _auth =>
       {'Authorization': 'Basic ${base64Encode(utf8.encode('$_user:$_pass'))}'};
 
@@ -46,19 +50,32 @@ class Updater {
   /// Prüft HiDrive auf eine neuere Version. Gibt null zurück, wenn aktuell oder
   /// nicht erreichbar.
   static Future<UpdateInfo?> check() async {
-    if (!configured) return null;
+    if (!configured) {
+      lastStatus = 'nicht konfiguriert (keine HiDrive-Creds im Build)';
+      debugPrint('UPDATER: $lastStatus');
+      return null;
+    }
     try {
+      debugPrint('UPDATER: GET $_versionUrl');
       final r = await http
           .get(Uri.parse(_versionUrl), headers: _auth)
           .timeout(const Duration(seconds: 12));
-      if (r.statusCode != 200) return null;
+      debugPrint('UPDATER: HTTP ${r.statusCode}, body=${r.body}');
+      if (r.statusCode != 200) {
+        lastStatus = 'HTTP ${r.statusCode} von HiDrive';
+        return null;
+      }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final remote = (j['versionCode'] as num).toInt();
       final local = await localBuildNumber();
+      lastStatus = 'remote=$remote local=$local';
+      debugPrint('UPDATER: $lastStatus');
       if (remote <= local) return null;
       final apk = (j['apk'] as String?) ?? 'garten-app.apk';
       return UpdateInfo(remote, (j['versionName'] ?? '').toString(), _apkUrl(apk));
-    } catch (_) {
+    } catch (e) {
+      lastStatus = 'Fehler: $e';
+      debugPrint('UPDATER: $lastStatus');
       return null;
     }
   }

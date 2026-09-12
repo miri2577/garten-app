@@ -102,8 +102,8 @@ class _CameraScreenState extends State<CameraScreen> {
       );
       _exo = c;
       await c.initialize();
-      // Live: an die Live-Kante springen, dort halten (kein Loop).
-      if (c.value.duration > Duration.zero) await c.seekTo(c.value.duration);
+      // ExoPlayer startet bei Live-HLS an der Live-Kante. KEIN seekTo hier —
+      // ein Sprung ans Ende direkt nach initialize() blockiert die Wiedergabe.
       await c.play();
       c.addListener(_exoListener);
       _liveTimer?.cancel();

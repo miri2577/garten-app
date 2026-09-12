@@ -60,8 +60,8 @@ class _LiveVideoState extends State<LiveVideo> with RouteAware {
         _exo = c;
         await c.initialize();
         await c.setVolume(widget.muted ? 0 : 1);
-        // Live: an die Live-Kante springen und dort halten (kein Loop).
-        if (c.value.duration > Duration.zero) await c.seekTo(c.value.duration);
+        // ExoPlayer startet an der Live-Kante; der periodische _keepLive-Timer
+        // zieht bei Drift nach. KEIN initialer seekTo (blockiert Live-HLS).
         await c.play();
         _liveTimer = Timer.periodic(const Duration(seconds: 12), (_) => _keepLive());
         if (mounted) setState(() => _ready = true);

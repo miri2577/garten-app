@@ -42,7 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _checkUpdate() async {
     final u = await Updater.check();
-    if (mounted && u != null) setState(() => _update = u);
+    if (mounted) setState(() => _update = u);
   }
 
   Future<void> _startUpdate() async {

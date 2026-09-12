@@ -1,0 +1,84 @@
+name: APK bauen und auf HiDrive hochladen
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.3'
+          channel: stable
+
+      - name: Abhängigkeiten
+        run: flutter pub get
+
+      - name: Versionsnummer aus Lauf-Nummer
+        id: ver
+        run: |
+          CODE=$((100 + ${{ github.run_number }}))
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=1.0.$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Release-APK bauen (nur APK)
+        env:
+          HA_TOKEN: ${{ secrets.HA_TOKEN }}
+          HIDRIVE_USER: ${{ secrets.HIDRIVE_USER }}
+          HIDRIVE_PASS: ${{ secrets.HIDRIVE_PASS }}
+          HA_URL: ${{ vars.HA_URL }}
+          HA_RTSP: ${{ vars.HA_RTSP }}
+          HA_HLS: ${{ vars.HA_HLS }}
+          HIDRIVE_URL: ${{ vars.HIDRIVE_URL }}
+          HIDRIVE_DIR: ${{ vars.HIDRIVE_DIR }}
+        run: |
+          flutter build apk --release \
+            --build-number=${{ steps.ver.outputs.code }} \
+            --build-name=${{ steps.ver.outputs.name }} \
+            --dart-define=HA_URL="$HA_URL" \
+            --dart-define=HA_TOKEN="$HA_TOKEN" \
+            --dart-define=HA_RTSP="$HA_RTSP" \
+            --dart-define=HA_HLS="$HA_HLS" \
+            --dart-define=HIDRIVE_URL="$HIDRIVE_URL" \
+            --dart-define=HIDRIVE_DIR="$HIDRIVE_DIR" \
+            --dart-define=HIDRIVE_USER="$HIDRIVE_USER" \
+            --dart-define=HIDRIVE_PASS="$HIDRIVE_PASS"
+
+      - name: version.json erzeugen
+        run: |
+          cat > version.json <<JSON
+          {
+            "versionCode": ${{ steps.ver.outputs.code }},
+            "versionName": "${{ steps.ver.outputs.name }}",
+            "apk": "garten-app.apk"
+          }
+          JSON
+          cp build/app/outputs/flutter-apk/app-release.apk garten-app.apk
+
+      - name: Auf HiDrive hochladen (WebDAV)
+        env:
+          HIDRIVE_URL: ${{ vars.HIDRIVE_URL }}
+          HIDRIVE_DIR: ${{ vars.HIDRIVE_DIR }}
+          U: ${{ secrets.HIDRIVE_USER }}
+          P: ${{ secrets.HIDRIVE_PASS }}
+        run: |
+          set -e
+          # Zielordner sicherstellen (405 = existiert bereits, ok)
+          curl -sf -u "$U:$P" -X MKCOL "$HIDRIVE_URL$HIDRIVE_DIR/" || true
+          # Erst das APK, dann version.json (damit die Version nie auf ein fehlendes APK zeigt)
+          curl -sf -u "$U:$P" -T garten-app.apk  "$HIDRIVE_URL$HIDRIVE_DIR/garten-app.apk"
+          curl -sf -u "$U:$P" -T version.json    "$HIDRIVE_URL$HIDRIVE_DIR/version.json"
+          echo "Hochgeladen: garten-app.apk (Version ${{ steps.ver.outputs.code }})"

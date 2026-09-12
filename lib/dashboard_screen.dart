@@ -7,6 +7,7 @@ import 'camera_screen.dart';
 import 'ha_client.dart';
 import 'live_video.dart';
 import 'theme.dart';
+import 'updater.dart';
 
 /// Startbildschirm: Kacheln mit Live-Daten aus Home Assistant, fernbedienbar.
 class DashboardScreen extends StatefulWidget {
@@ -27,11 +28,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Timer? _dataTimer;
 
+  UpdateInfo? _update;
+  bool _installing = false;
+  double _downloadProgress = 0;
+
   @override
   void initState() {
     super.initState();
     _refresh();
     _dataTimer = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
+    _checkUpdate();
+  }
+
+  Future<void> _checkUpdate() async {
+    final u = await Updater.check();
+    if (mounted && u != null) setState(() => _update = u);
+  }
+
+  Future<void> _startUpdate() async {
+    if (_update == null) return;
+    setState(() {
+      _installing = true;
+      _downloadProgress = 0;
+    });
+    final err = await Updater.downloadAndInstall(
+      _update!.apkUrl,
+      onProgress: (p) {
+        if (mounted) setState(() => _downloadProgress = p);
+      },
+    );
+    if (mounted) {
+      setState(() => _installing = false);
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Update: $err')));
+      }
+    }
   }
 
   Future<void> _refresh() async {
@@ -93,6 +125,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _Header(weather: weather, error: _error),
                 const SizedBox(height: 20),
+                if (_update != null) ...[
+                  _UpdateBanner(
+                    info: _update!,
+                    installing: _installing,
+                    progress: _downloadProgress,
+                    onUpdate: _startUpdate,
+                    onDismiss: () => setState(() => _update = null),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Expanded(
                   child: !_loaded
                       ? const Center(child: CircularProgressIndicator())
@@ -475,6 +517,71 @@ class _SettingsCard extends StatelessWidget {
             Text('Einstellungen', style: TextStyle(fontSize: 18)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Hinweisleiste, wenn auf HiDrive eine neue Version bereitliegt.
+class _UpdateBanner extends StatelessWidget {
+  final UpdateInfo info;
+  final bool installing;
+  final double progress;
+  final VoidCallback onUpdate;
+  final VoidCallback onDismiss;
+  const _UpdateBanner({
+    required this.info,
+    required this.installing,
+    required this.progress,
+    required this.onUpdate,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.system_update, color: scheme.onPrimaryContainer),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              installing
+                  ? 'Lädt Update … ${(progress * 100).round()} %'
+                  : 'Neue Version verfügbar${info.versionName.isNotEmpty ? " (${info.versionName})" : ""}',
+              style: TextStyle(
+                  color: scheme.onPrimaryContainer,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (installing)
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: progress > 0 ? progress : null,
+                color: scheme.onPrimaryContainer,
+              ),
+            )
+          else ...[
+            TextButton(onPressed: onDismiss, child: const Text('Später')),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              autofocus: true,
+              onPressed: onUpdate,
+              icon: const Icon(Icons.download),
+              label: const Text('Aktualisieren'),
+            ),
+          ],
+        ],
       ),
     );
   }

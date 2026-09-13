@@ -20,8 +20,11 @@ import 'ha_client.dart';
 class CameraScreen extends StatefulWidget {
   final HaConfig config;
   final Future<void> Function() onOpenSettings;
-  const CameraScreen(
-      {super.key, required this.config, required this.onOpenSettings});
+  const CameraScreen({
+    super.key,
+    required this.config,
+    required this.onOpenSettings,
+  });
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -45,12 +48,29 @@ class _CameraScreenState extends State<CameraScreen> {
   String _activeQuality = 'hd';
 
   // Explizite Fokusverwaltung für die Bedienleiste (D-Pad links/rechts).
+  // Bedienelemente + Infozeile blenden sich nach kurzer Ruhe aus; jede Taste,
+  // Maus- oder Touch-Aktion holt sie für ein paar Sekunden zurück.
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
+  static const _hideAfter = Duration(seconds: 4);
+
+  void _showControls() {
+    _hideTimer?.cancel();
+    if (!_controlsVisible && mounted) setState(() => _controlsVisible = true);
+    _hideTimer = Timer(_hideAfter, () {
+      if (mounted) setState(() => _controlsVisible = false);
+    });
+  }
+
   final FocusNode _backFocus = FocusNode(debugLabel: 'back');
   final FocusNode _qualityFocus = FocusNode(debugLabel: 'quality');
   final FocusNode _refreshFocus = FocusNode(debugLabel: 'refresh');
 
-  List<FocusNode> get _navNodes =>
-      [_backFocus, if (_useExo) _qualityFocus, _refreshFocus];
+  List<FocusNode> get _navNodes => [
+    _backFocus,
+    if (_useExo) _qualityFocus,
+    _refreshFocus,
+  ];
 
   void _moveFocus(int dir) {
     final nodes = _navNodes;
@@ -76,6 +96,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _backFocus.requestFocus();
+      _showControls();
     });
   }
 
@@ -175,6 +196,24 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _handleExoError(String desc) async {
     if (_fallingBack) return;
     final capExceeded = desc.contains('EXCEEDS_CAPABILITIES');
+
+    // Quellfehler (RTSP-Handshake, Netz, 4xx) sind keine Decoder-Hänger:
+    // nicht viermal warten, sondern sofort auf HLS ausweichen.
+    final sourceError =
+        desc.contains('Source error') ||
+        desc.contains('SETUP') ||
+        desc.contains('Response code') ||
+        desc.contains('Unable to connect');
+    if (sourceError && _transport == 'rtsp') {
+      _transport = 'hls';
+      _mcRetries = 0;
+      _fallingBack = true;
+      await _disposeExo();
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _startExo();
+      _fallingBack = false;
+      return;
+    }
 
     if (_mode == 'auto' && _activeQuality == 'hd' && capExceeded) {
       await HaConfig.setHdUnsupported();
@@ -296,6 +335,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void dispose() {
     _liveTimer?.cancel();
+    _hideTimer?.cancel();
     _backFocus.dispose();
     _qualityFocus.dispose();
     _refreshFocus.dispose();
@@ -317,6 +357,20 @@ class _CameraScreenState extends State<CameraScreen> {
           // Android-Zurück NICHT hier abfangen (System poppt selbst -> ein Pop).
           if (event is KeyDownEvent) {
             final k = event.logicalKey;
+            final wereHidden = !_controlsVisible;
+            _showControls();
+            // Waren die Elemente ausgeblendet, holt der erste Druck auf
+            // Pfeil/OK sie nur zurück (Zurück/Esc wirken weiterhin sofort).
+            if (wereHidden &&
+                (k == LogicalKeyboardKey.arrowRight ||
+                    k == LogicalKeyboardKey.arrowLeft ||
+                    k == LogicalKeyboardKey.arrowUp ||
+                    k == LogicalKeyboardKey.arrowDown ||
+                    k == LogicalKeyboardKey.select ||
+                    k == LogicalKeyboardKey.enter ||
+                    k == LogicalKeyboardKey.gameButtonA)) {
+              return KeyEventResult.handled;
+            }
             // Bedienleiste per D-Pad links/rechts durchschalten.
             if (k == LogicalKeyboardKey.arrowRight) {
               _moveFocus(1);
@@ -361,60 +415,70 @@ class _CameraScreenState extends State<CameraScreen> {
         },
         child: Scaffold(
           backgroundColor: Colors.black,
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              _content(),
-              // Bedienleiste oben — als Row für zuverlässige D-Pad-Navigation.
-              Positioned(
-                left: 12,
-                right: 12,
-                top: 12,
-                child: SafeArea(
-                  bottom: false,
-                  child: FocusTraversalGroup(
-                    child: Row(
-                      children: [
-                        _RoundButton(
-                          icon: Icons.arrow_back,
-                          tooltip: 'Zurück',
-                          focusNode: _backFocus,
-                          onPressed: _back,
+          body: Listener(
+            onPointerDown: (_) => _showControls(),
+            onPointerHover: (_) => _showControls(),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _content(),
+                // Bedienleiste oben — als Row für zuverlässige D-Pad-Navigation.
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  top: 12,
+                  child: _Fade(
+                    visible: _controlsVisible,
+                    child: SafeArea(
+                      bottom: false,
+                      child: FocusTraversalGroup(
+                        child: Row(
+                          children: [
+                            _RoundButton(
+                              icon: Icons.arrow_back,
+                              tooltip: 'Zurück',
+                              focusNode: _backFocus,
+                              onPressed: _back,
+                            ),
+                            const Spacer(),
+                            if (_useExo) ...[
+                              _PillButton(
+                                icon: Icons.hd_outlined,
+                                label: _qualityLabel,
+                                tooltip: 'Qualität: Auto / HD / SD',
+                                focusNode: _qualityFocus,
+                                onPressed: _cycleQuality,
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            _RoundButton(
+                              icon: Icons.refresh,
+                              tooltip: 'Neu laden',
+                              focusNode: _refreshFocus,
+                              onPressed: _retry,
+                            ),
+                          ],
                         ),
-                        const Spacer(),
-                        if (_useExo) ...[
-                          _PillButton(
-                            icon: Icons.hd_outlined,
-                            label: _qualityLabel,
-                            tooltip: 'Qualität: Auto / HD / SD',
-                            focusNode: _qualityFocus,
-                            onPressed: _cycleQuality,
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        _RoundButton(
-                          icon: Icons.refresh,
-                          tooltip: 'Neu laden',
-                          focusNode: _refreshFocus,
-                          onPressed: _retry,
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 16,
-                bottom: 12,
-                child: Text(
-                  'Garten · $_sourceLabel  ·  Zurück = beenden',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    fontSize: 13,
+                Positioned(
+                  left: 16,
+                  bottom: 12,
+                  child: _Fade(
+                    visible: _controlsVisible,
+                    child: Text(
+                      'Garten · $_sourceLabel  ·  Zurück = beenden',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -559,11 +623,14 @@ class _PillButtonState extends State<_PillButton> {
               children: [
                 Icon(widget.icon, color: Colors.white, size: 22),
                 const SizedBox(width: 8),
-                Text(widget.label,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -573,12 +640,34 @@ class _PillButtonState extends State<_PillButton> {
   }
 }
 
+/// Weich ein-/ausblenden; ausgeblendet ignoriert es Zeiger-Eingaben.
+class _Fade extends StatelessWidget {
+  final bool visible;
+  final Widget child;
+  const _Fade({required this.visible, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 350),
+        child: child,
+      ),
+    );
+  }
+}
+
 class _Overlay extends StatelessWidget {
   final String status;
   final bool error;
   final VoidCallback onRetry;
-  const _Overlay(
-      {required this.status, required this.error, required this.onRetry});
+  const _Overlay({
+    required this.status,
+    required this.error,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {

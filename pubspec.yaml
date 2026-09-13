@@ -98,3 +98,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Lokal gepatchte Kopie (2.9.5): RTSP in ExoPlayer erzwingt RTP ueber TCP,
+# weil go2rtc kein UDP kann und ExoPlayer bei "461" nicht selbst umschaltet.
+dependency_overrides:
+  video_player_android:
+    path: packages/video_player_android

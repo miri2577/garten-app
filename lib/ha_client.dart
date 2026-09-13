@@ -21,6 +21,10 @@ class HaConfig {
   /// darüber mit ExoPlayer (video_player) abgespielt — HLS-Segmente beginnen
   /// mit einem Keyframe, was der TV-Decoder braucht. Die SD-Variante wird durch
   /// Ersetzen von src=garten -> src=garten_sd abgeleitet.
+  ///
+  /// `mp4=flac`: fMP4 statt MPEG-TS, und go2rtc wandelt den G.711-Ton (PCMA)
+  /// der Kamera verlustfrei nach FLAC — ohne ffmpeg. Der frühere AAC-Transcode
+  /// stotterte (Zeitstempel-Sprünge); FLAC dekodiert Android nativ.
   final String hlsUrl;
 
   /// Wunsch-Qualität: 'auto' (HD versuchen, bei Decoder-Fehler auf SD zurück),
@@ -32,7 +36,7 @@ class HaConfig {
     required this.token,
     this.cameraEntity = 'camera.tapo_c520ws_hd_stream',
     this.rtspUrl = 'rtsp://100.93.228.17:8554/garten',
-    this.hlsUrl = 'http://100.93.228.17:1984/api/stream.m3u8?src=garten',
+    this.hlsUrl = 'http://100.93.228.17:1984/api/stream.m3u8?src=garten&mp4=flac',
     this.videoQuality = 'auto',
   });
 
@@ -55,7 +59,7 @@ class HaConfig {
   static const _defaultRtsp = String.fromEnvironment('HA_RTSP',
       defaultValue: 'rtsp://100.93.228.17:8554/garten');
   static const _defaultHls = String.fromEnvironment('HA_HLS',
-      defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten');
+      defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten&mp4=flac');
 
   static const _kUrl = 'ha_url';
   static const _kToken = 'ha_token';

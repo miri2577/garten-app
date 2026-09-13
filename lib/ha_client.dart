@@ -22,9 +22,10 @@ class HaConfig {
   /// mit einem Keyframe, was der TV-Decoder braucht. Die SD-Variante wird durch
   /// Ersetzen von src=garten -> src=garten_sd abgeleitet.
   ///
-  /// `mp4=flac`: fMP4 statt MPEG-TS, und go2rtc wandelt den G.711-Ton (PCMA)
-  /// der Kamera verlustfrei nach FLAC — ohne ffmpeg. Der frühere AAC-Transcode
-  /// stotterte (Zeitstempel-Sprünge); FLAC dekodiert Android nativ.
+  /// HLS ist auf Android nur noch der Weg für die stumme Dashboard-Kachel und
+  /// der Rückfall fürs Vollbild. Ton gibt es über HLS nicht: G.711 passt nicht
+  /// in HLS, ffmpeg->AAC stotterte, und go2rtcs FLAC-Verpackung (`mp4=flac`)
+  /// bringt den Android-FLAC-Decoder nach wenigen Sekunden zum Absturz.
   final String hlsUrl;
 
   /// Wunsch-Qualität: 'auto' (HD versuchen, bei Decoder-Fehler auf SD zurück),
@@ -36,9 +37,17 @@ class HaConfig {
     required this.token,
     this.cameraEntity = 'camera.tapo_c520ws_hd_stream',
     this.rtspUrl = 'rtsp://100.93.228.17:8554/garten',
-    this.hlsUrl = 'http://100.93.228.17:1984/api/stream.m3u8?src=garten&mp4=flac',
+    this.hlsUrl = 'http://100.93.228.17:1984/api/stream.m3u8?src=garten',
     this.videoQuality = 'auto',
   });
+
+  /// RTSP-URL für eine konkrete Qualität ('hd' oder 'sd'), abgeleitet aus der
+  /// Basis (…/garten bzw. …/garten_sd). Auf Android spielt das Vollbild diese
+  /// URL mit ExoPlayer: H.264 + G.711/PCMA nativ — Ton ohne jede Umwandlung.
+  String rtspUrlForQuality(String q) {
+    final re = RegExp(r'/garten(_sd)?$');
+    return rtspUrl.trim().replaceFirst(re, q == 'sd' ? '/garten_sd' : '/garten');
+  }
 
   /// HLS-URL für eine konkrete Qualität ('hd' oder 'sd'), abgeleitet aus der Basis.
   String hlsUrlForQuality(String q) {
@@ -59,7 +68,7 @@ class HaConfig {
   static const _defaultRtsp = String.fromEnvironment('HA_RTSP',
       defaultValue: 'rtsp://100.93.228.17:8554/garten');
   static const _defaultHls = String.fromEnvironment('HA_HLS',
-      defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten&mp4=flac');
+      defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten');
 
   static const _kUrl = 'ha_url';
   static const _kToken = 'ha_token';

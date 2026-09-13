@@ -98,16 +98,25 @@ class _CameraScreenState extends State<CameraScreen> {
     return active;
   }
 
-  // ---- ExoPlayer / HLS (Android) ----
+  // ---- ExoPlayer (Android) ----
+  // Transport: RTSP zuerst (H.264 + G.711-Ton nativ, keine Umwandlung, wenig
+  // Latenz). Schlägt RTSP wiederholt fehl, Rückfall auf HLS (dann ohne Ton).
+  String _transport = 'rtsp';
+
+  bool get _rtspAvailable => widget.config.rtspUrl.trim().isNotEmpty;
+
   Future<void> _startExo() async {
+    if (!_rtspAvailable) _transport = 'hls';
     setState(() {
       _status = 'Hole Kamera-Stream ($_qualityLabel) …';
       _error = false;
       _playing = false;
     });
-    _sourceLabel = 'go2rtc · $_qualityLabel';
+    _sourceLabel = 'go2rtc ${_transport.toUpperCase()} · $_qualityLabel';
     try {
-      final url = widget.config.hlsUrlForQuality(_activeQuality);
+      final url = _transport == 'rtsp'
+          ? widget.config.rtspUrlForQuality(_activeQuality)
+          : widget.config.hlsUrlForQuality(_activeQuality);
       final c = VideoPlayerController.networkUrl(
         Uri.parse(url),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
@@ -123,14 +132,18 @@ class _CameraScreenState extends State<CameraScreen> {
       await c.play();
       c.addListener(_exoListener);
       _liveTimer?.cancel();
-      _liveTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-        final v = _exo?.value;
-        if (v != null && v.isInitialized && v.isPlaying) {
-          if (v.duration - v.position > const Duration(seconds: 10)) {
-            _exo?.seekTo(v.duration - const Duration(seconds: 2));
+      // Live-Kante nachziehen gibt es nur bei HLS; RTSP ist ohnehin live und
+      // hat keine Dauer, in die man springen könnte.
+      if (_transport == 'hls') {
+        _liveTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+          final v = _exo?.value;
+          if (v != null && v.isInitialized && v.isPlaying) {
+            if (v.duration - v.position > const Duration(seconds: 10)) {
+              _exo?.seekTo(v.duration - const Duration(seconds: 2));
+            }
           }
-        }
-      });
+        });
+      }
       _mcRetries = 0; // erfolgreicher Start -> Zähler zurücksetzen
       if (mounted) setState(() => _playing = true);
     } catch (e) {
@@ -158,6 +171,7 @@ class _CameraScreenState extends State<CameraScreen> {
   /// - HD überfordert den Decoder (EXCEEDS_CAPABILITIES) -> dauerhaft merken, auf SD.
   /// - Sonst transienter Decoder-Fehler (z.B. Kachel gibt den einzigen Hardware-
   ///   Decoder gerade erst frei) -> kurz warten und erneut versuchen.
+  /// - Sind die Versuche über RTSP aufgebraucht -> einmalig auf HLS wechseln.
   Future<void> _handleExoError(String desc) async {
     if (_fallingBack) return;
     final capExceeded = desc.contains('EXCEEDS_CAPABILITIES');
@@ -178,6 +192,17 @@ class _CameraScreenState extends State<CameraScreen> {
       _fallingBack = true;
       await _disposeExo();
       await Future.delayed(const Duration(milliseconds: 700));
+      await _startExo();
+      _fallingBack = false;
+      return;
+    }
+
+    if (!capExceeded && _transport == 'rtsp') {
+      _transport = 'hls';
+      _mcRetries = 0;
+      _fallingBack = true;
+      await _disposeExo();
+      await Future.delayed(const Duration(milliseconds: 500));
       await _startExo();
       _fallingBack = false;
       return;
@@ -248,6 +273,8 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _retry() async {
     if (_useExo) {
       _fallingBack = false;
+      _mcRetries = 0;
+      _transport = 'rtsp'; // manuelles Neuladen probiert wieder den Weg mit Ton
       if (_mode == 'sd') {
         _activeQuality = 'sd';
       } else if (_mode == 'hd') {

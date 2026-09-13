@@ -111,6 +111,9 @@ class _CameraScreenState extends State<CameraScreen> {
       final c = VideoPlayerController.networkUrl(
         Uri.parse(url),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        // SurfaceView statt Textur: auf dem Google TV Streamer wird die
+        // Video-Textur falsch skaliert (Bild oben links, Rest gruen).
+        viewType: VideoViewType.platformView,
       );
       _exo = c;
       // Timeout gegen Endlos-Laden (z.B. hängender Decoder nach HD-Fehlschlag).
@@ -397,13 +400,18 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     if (_useExo) {
       if (_playing && _exo != null && _exo!.value.isInitialized) {
-        return Center(
-          child: AspectRatio(
-            aspectRatio: _exo!.value.aspectRatio == 0
-                ? 16 / 9
-                : _exo!.value.aspectRatio,
-            child: VideoPlayer(_exo!),
+        // Der Decoder meldet die echte Aufloesung erst nach dem ersten Keyframe
+        // nach (z.B. 320x240 -> 2560x1440). Deshalb auf Aenderungen hoeren,
+        // sonst bleibt das Seitenverhaeltnis auf dem Startwert stehen.
+        return ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: _exo!,
+          builder: (context, v, child) => Center(
+            child: AspectRatio(
+              aspectRatio: v.aspectRatio == 0 ? 16 / 9 : v.aspectRatio,
+              child: child,
+            ),
           ),
+          child: VideoPlayer(_exo!),
         );
       }
       return _Overlay(status: _status, error: false, onRetry: _retry);

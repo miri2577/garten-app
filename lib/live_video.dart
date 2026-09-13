@@ -56,7 +56,11 @@ class _LiveVideoState extends State<LiveVideo> with RouteAware {
   Future<void> _start() async {
     try {
       if (_useExo) {
-        final c = VideoPlayerController.networkUrl(Uri.parse(widget.hlsUrl.trim()));
+        final c = VideoPlayerController.networkUrl(
+          Uri.parse(widget.hlsUrl.trim()),
+          // Siehe camera_screen.dart: Texturweg ist auf manchen TV-Chips defekt.
+          viewType: VideoViewType.platformView,
+        );
         _exo = c;
         await c.initialize();
         await c.setVolume(widget.muted ? 0 : 1);

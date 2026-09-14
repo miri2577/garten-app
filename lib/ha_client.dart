@@ -45,8 +45,28 @@ class HaConfig {
   /// Basis (…/garten bzw. …/garten_sd). Auf Android spielt das Vollbild diese
   /// URL mit ExoPlayer: H.264 + G.711/PCMA nativ — Ton ohne jede Umwandlung.
   String rtspUrlForQuality(String q) {
+    final u = Uri.parse(rtspUrl.trim());
     final re = RegExp(r'/garten(_sd)?$');
-    return rtspUrl.trim().replaceFirst(re, q == 'sd' ? '/garten_sd' : '/garten');
+    final path = u.path.replaceFirst(re, q == 'sd' ? '/garten_sd' : '/garten');
+    // Eventuelle Medien-Auswahl (?video/?audio) verwerfen — die setzt der Aufrufer.
+    return u
+        .replace(path: path, query: '')
+        .toString()
+        .replaceFirst(RegExp(r'\?$'), '');
+  }
+
+  /// Nur die Videospur (go2rtc-Auswahl `?video`). Bild und Ton laufen in
+  /// getrennten Playern: koppelt ExoPlayer beide Spuren in einer RTSP-Sitzung,
+  /// friert das Bild nach wenigen Sekunden ein, während der Ton weiterläuft.
+  String rtspVideoUrl(String q) => '${rtspUrlForQuality(q)}?video';
+
+  /// Nur die Tonspur (G.711/PCMA). Eigener go2rtc-Stream `garten_audio` ohne
+  /// `?`-Query: ExoPlayers RTSP-Client verträgt eine zweite Sitzung mit
+  /// Query-Auswahl nicht (DESCRIBE 404), ein sauberer Streamname funktioniert.
+  String get rtspAudioUrl {
+    final u = Uri.parse(rtspUrl.trim());
+    final path = u.path.replaceFirst(RegExp(r'/garten(_sd)?$'), '/garten_audio');
+    return u.replace(path: path, query: '').toString().replaceFirst(RegExp(r'\?$'), '');
   }
 
   /// HLS-URL für eine konkrete Qualität ('hd' oder 'sd'), abgeleitet aus der Basis.
@@ -60,15 +80,23 @@ class HaConfig {
 
   bool get hasDirectStream => rtspUrl.trim().isNotEmpty;
 
-  static const _defaultUrl =
-      String.fromEnvironment('HA_URL', defaultValue: 'https://ha.cavia-aperea.de');
+  static const _defaultUrl = String.fromEnvironment(
+    'HA_URL',
+    defaultValue: 'https://ha.cavia-aperea.de',
+  );
   static const _defaultToken = String.fromEnvironment('HA_TOKEN');
-  static const _defaultEntity = String.fromEnvironment('HA_CAMERA',
-      defaultValue: 'camera.tapo_c520ws_hd_stream');
-  static const _defaultRtsp = String.fromEnvironment('HA_RTSP',
-      defaultValue: 'rtsp://100.93.228.17:8554/garten');
-  static const _defaultHls = String.fromEnvironment('HA_HLS',
-      defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten');
+  static const _defaultEntity = String.fromEnvironment(
+    'HA_CAMERA',
+    defaultValue: 'camera.tapo_c520ws_hd_stream',
+  );
+  static const _defaultRtsp = String.fromEnvironment(
+    'HA_RTSP',
+    defaultValue: 'rtsp://100.93.228.17:8554/garten',
+  );
+  static const _defaultHls = String.fromEnvironment(
+    'HA_HLS',
+    defaultValue: 'http://100.93.228.17:1984/api/stream.m3u8?src=garten',
+  );
 
   static const _kUrl = 'ha_url';
   static const _kToken = 'ha_token';
@@ -131,7 +159,12 @@ class HaConfig {
   Uri get wsUri {
     final u = Uri.parse(baseUrl);
     final scheme = u.scheme == 'https' ? 'wss' : 'ws';
-    return Uri(scheme: scheme, host: u.host, port: u.hasPort ? u.port : null, path: '/api/websocket');
+    return Uri(
+      scheme: scheme,
+      host: u.host,
+      port: u.hasPort ? u.port : null,
+      path: '/api/websocket',
+    );
   }
 }
 
@@ -144,10 +177,10 @@ class HaEntity {
   HaEntity(this.entityId, this.state, this.attributes);
 
   factory HaEntity.fromJson(Map<String, dynamic> j) => HaEntity(
-        j['entity_id'] as String,
-        (j['state'] ?? '').toString(),
-        (j['attributes'] as Map?)?.cast<String, dynamic>() ?? const {},
-      );
+    j['entity_id'] as String,
+    (j['state'] ?? '').toString(),
+    (j['attributes'] as Map?)?.cast<String, dynamic>() ?? const {},
+  );
 
   String get domain => entityId.split('.').first;
   String get friendlyName =>
@@ -165,13 +198,13 @@ class HaClient {
 
   /// Header für authentifizierte Bild-/Datenabrufe (z.B. Image.network).
   Map<String, String> get authHeaders => {
-        'Authorization': 'Bearer ${config.token}',
-      };
+    'Authorization': 'Bearer ${config.token}',
+  };
 
   Map<String, String> get _authHeaders => {
-        'Authorization': 'Bearer ${config.token}',
-        'Content-Type': 'application/json',
-      };
+    'Authorization': 'Bearer ${config.token}',
+    'Content-Type': 'application/json',
+  };
 
   /// Alle Zustände als Map entity_id -> HaEntity.
   Future<Map<String, HaEntity>> getStates() async {
@@ -212,8 +245,10 @@ class HaClient {
   Future<Map<String, dynamic>?> getState(String entityId) async {
     try {
       final r = await http
-          .get(Uri.parse('${config.baseUrl}/api/states/$entityId'),
-              headers: _authHeaders)
+          .get(
+            Uri.parse('${config.baseUrl}/api/states/$entityId'),
+            headers: _authHeaders,
+          )
           .timeout(const Duration(seconds: 10));
       if (r.statusCode == 200) {
         return jsonDecode(r.body) as Map<String, dynamic>;
@@ -236,45 +271,59 @@ class HaClient {
       }
     });
 
-    sub = channel.stream.listen((raw) {
-      final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      switch (msg['type']) {
-        case 'auth_required':
-          channel.sink.add(jsonEncode({'type': 'auth', 'access_token': config.token}));
-          break;
-        case 'auth_invalid':
-          if (!completer.isCompleted) {
-            completer.completeError('Token ungültig (auth_invalid)');
-          }
-          break;
-        case 'auth_ok':
-          channel.sink.add(jsonEncode({
-            'id': msgId,
-            'type': 'camera/stream',
-            'entity_id': entityId,
-          }));
-          break;
-        case 'result':
-          if (msg['id'] == msgId) {
-            if (msg['success'] == true && msg['result']?['url'] != null) {
-              final path = msg['result']['url'] as String;
-              final url = path.startsWith('http') ? path : '${config.baseUrl}$path';
-              if (!completer.isCompleted) completer.complete(url);
-            } else {
-              if (!completer.isCompleted) {
-                completer.completeError('camera/stream fehlgeschlagen: ${msg['error'] ?? msg}');
+    sub = channel.stream.listen(
+      (raw) {
+        final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+        switch (msg['type']) {
+          case 'auth_required':
+            channel.sink.add(
+              jsonEncode({'type': 'auth', 'access_token': config.token}),
+            );
+            break;
+          case 'auth_invalid':
+            if (!completer.isCompleted) {
+              completer.completeError('Token ungültig (auth_invalid)');
+            }
+            break;
+          case 'auth_ok':
+            channel.sink.add(
+              jsonEncode({
+                'id': msgId,
+                'type': 'camera/stream',
+                'entity_id': entityId,
+              }),
+            );
+            break;
+          case 'result':
+            if (msg['id'] == msgId) {
+              if (msg['success'] == true && msg['result']?['url'] != null) {
+                final path = msg['result']['url'] as String;
+                final url = path.startsWith('http')
+                    ? path
+                    : '${config.baseUrl}$path';
+                if (!completer.isCompleted) completer.complete(url);
+              } else {
+                if (!completer.isCompleted) {
+                  completer.completeError(
+                    'camera/stream fehlgeschlagen: ${msg['error'] ?? msg}',
+                  );
+                }
               }
             }
-          }
-          break;
-      }
-    }, onError: (e) {
-      if (!completer.isCompleted) completer.completeError('WebSocket-Fehler: $e');
-    }, onDone: () {
-      if (!completer.isCompleted) {
-        completer.completeError('WebSocket geschlossen, bevor die URL kam');
-      }
-    });
+            break;
+        }
+      },
+      onError: (e) {
+        if (!completer.isCompleted) {
+          completer.completeError('WebSocket-Fehler: $e');
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.completeError('WebSocket geschlossen, bevor die URL kam');
+        }
+      },
+    );
 
     try {
       return await completer.future;

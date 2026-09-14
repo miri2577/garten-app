@@ -77,7 +77,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // Auch ohne Home Assistant das Dashboard zeigen: die Kamera läuft
+      // unabhängig davon (go2rtc), die Wetter-Kacheln bleiben leer.
+      if (mounted) {
+        setState(() {
+          _error = '$e';
+          _loaded = true;
+        });
+      }
     }
   }
 

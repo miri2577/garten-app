@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -34,6 +35,7 @@ class _CameraScreenState extends State<CameraScreen> {
   // media_kit-Pfad (Desktop)
   Player? _player;
   VideoController? _mkController;
+  StreamSubscription? _mkLog;
   // ExoPlayer-Pfad (Android)
   VideoPlayerController? _exo;
   Timer? _liveTimer;
@@ -68,7 +70,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   List<FocusNode> get _navNodes => [
     _backFocus,
-    if (_useExo) _qualityFocus,
+    if (_qualityAvailable) _qualityFocus,
     _refreshFocus,
   ];
 
@@ -80,8 +82,12 @@ class _CameraScreenState extends State<CameraScreen> {
     nodes[next].requestFocus();
   }
 
-  bool get _useExo =>
-      !kIsWeb && Platform.isAndroid && widget.config.hlsUrl.trim().isNotEmpty;
+  // Bild auf Android über ExoPlayer (RTSP video-only, rendert HD bildschirm-
+  // füllend, kein Surface-Problem). Ton getrennt über libmpv (audio-only, ohne
+  // Video also ohne Surface). media_kit-Video nur noch auf dem Linux-Desktop.
+  bool get _useExo => !kIsWeb && Platform.isAndroid;
+
+  bool get _qualityAvailable => widget.config.hasDirectStream;
 
   @override
   void initState() {
@@ -89,10 +95,24 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_useExo) {
       _initExo();
     } else {
-      _player = Player();
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          logLevel: MPVLogLevel.info,
+          // WICHTIG: 'rtsp' + 'rtsps' explizit erlauben. Das gebundelte
+          // Android-ffmpeg nimmt sonst die (zu enge) Standardliste und
+          // verweigert das Öffnen der rtsp://-URL -> Dauer-Ladekreis.
+          protocolWhitelist: [
+            'file', 'data', 'crypto', 'tcp', 'tls', 'udp', 'rtp',
+            'http', 'https', 'rtsp', 'rtsps',
+          ],
+        ),
+      );
+      _mkLog = _player!.stream.log.listen((l) {
+        // ignore: avoid_print
+        print('MPV[${l.level}] ${l.prefix}: ${l.text}');
+      });
       _mkController = VideoController(_player!);
-      _configurePlayer();
-      _startMediaKit();
+      _initMediaKit();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _backFocus.requestFocus();
@@ -111,6 +131,12 @@ class _CameraScreenState extends State<CameraScreen> {
       _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
     }
     await _startExo();
+    // Ton bewusst verzögert: starten Video- und Audio-RTSP-Sitzung gleichzeitig,
+    // beantwortet go2rtc das zweite DESCRIBE mit 404. 2,5 s Abstand genügen.
+    _audioStartTimer?.cancel();
+    _audioStartTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (mounted) _startAudio();
+    });
   }
 
   String get _qualityLabel {
@@ -120,11 +146,70 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   // ---- ExoPlayer (Android) ----
-  // Transport: RTSP zuerst (H.264 + G.711-Ton nativ, keine Umwandlung, wenig
-  // Latenz). Schlägt RTSP wiederholt fehl, Rückfall auf HLS (dann ohne Ton).
+  // Bild läuft über HLS (auf dem TV-Decoder zuverlässig, full HD), Ton über
+  // einen getrennten RTSP-Player (siehe unten). Warum getrennt: koppelt man
+  // Bild und Ton in EINER RTSP-Sitzung, friert das Bild nach Sekunden ein;
+  // startet man beide RTSP-Sitzungen gleichzeitig, liefert go2rtc dem zweiten
+  // DESCRIBE ein 404. Getrennte Transporte umgehen beides.
   String _transport = 'rtsp';
 
   bool get _rtspAvailable => widget.config.rtspUrl.trim().isNotEmpty;
+
+  // ---- Ton: eigener Player über media_kit/libmpv ----
+  // NICHT über einen zweiten ExoPlayer: dessen RTSP-Client beantwortet eine
+  // zweite gleichzeitige Sitzung im selben Prozess grundsätzlich mit DESCRIBE
+  // 404 (unabhängig von Query oder Streamnamen). libmpv bringt einen eigenen
+  // RTSP-Stack mit und läuft konfliktfrei neben dem ExoPlayer-Bild.
+  Player? _audio;
+  Timer? _audioStartTimer;
+
+  StreamSubscription? _audioLog;
+
+  Future<void> _startAudio() async {
+    if (!_rtspAvailable || _audio != null) return;
+    // Bewährten gekoppelten Stream nehmen (der lieferte Ton), aber die SD-Variante
+    // (kleiner Video-Overhead) und mit vid=no -> libmpv dekodiert nur den Ton,
+    // kein Video, also keine Surface. Der separate garten_audio-Stream liefert
+    // "Invalid data" und fällt weg.
+    final url = widget.config.rtspUrlForQuality('sd');
+    try {
+      final p = Player(
+        configuration: const PlayerConfiguration(
+          logLevel: MPVLogLevel.info,
+          protocolWhitelist: [
+            'file', 'data', 'crypto', 'tcp', 'tls', 'udp', 'rtp',
+            'http', 'https', 'rtsp', 'rtsps',
+          ],
+        ),
+      );
+      _audio = p;
+      _audioLog = p.stream.log.listen((l) {
+        // ignore: avoid_print
+        print('AMPV[${l.level}] ${l.prefix}: ${l.text}');
+      });
+      final np = p.platform;
+      if (np is NativePlayer) {
+        await np.setProperty('rtsp-transport', 'tcp'); // go2rtc nur TCP
+        await np.setProperty('vid', 'no'); // reiner Ton -> kein Video/Surface
+      }
+      await p.setVolume(100);
+      await p.open(Media(url), play: true);
+      // ignore: avoid_print
+      print('AUDIO: libmpv geöffnet -> $url');
+    } catch (e) {
+      // ignore: avoid_print
+      print('AUDIO-FEHLER: $e ($url)');
+      await _stopAudio();
+    }
+  }
+
+  Future<void> _stopAudio() async {
+    final a = _audio;
+    _audio = null;
+    await _audioLog?.cancel();
+    _audioLog = null;
+    await a?.dispose();
+  }
 
   Future<void> _startExo() async {
     if (!_rtspAvailable) _transport = 'hls';
@@ -133,10 +218,11 @@ class _CameraScreenState extends State<CameraScreen> {
       _error = false;
       _playing = false;
     });
-    _sourceLabel = 'go2rtc ${_transport.toUpperCase()} · $_qualityLabel';
+    _sourceLabel =
+        'go2rtc ${_transport.toUpperCase()} · $_qualityLabel${_rtspAvailable ? ' · Ton' : ''}';
     try {
       final url = _transport == 'rtsp'
-          ? widget.config.rtspUrlForQuality(_activeQuality)
+          ? widget.config.rtspVideoUrl(_activeQuality)
           : widget.config.hlsUrlForQuality(_activeQuality);
       final c = VideoPlayerController.networkUrl(
         Uri.parse(url),
@@ -260,22 +346,87 @@ class _CameraScreenState extends State<CameraScreen> {
     _mode = _mode == 'auto' ? 'hd' : (_mode == 'hd' ? 'sd' : 'auto');
     _activeQuality = _mode == 'sd' ? 'sd' : 'hd';
     await HaConfig.saveQuality(_mode);
-    _exo?.removeListener(_exoListener);
-    await _exo?.dispose();
-    _exo = null;
-    await _startExo();
+    await _startMediaKit(); // öffnet den Player mit der neuen Qualität neu
+  }
+
+  /// Startqualität bestimmen (Auto/HD/SD, HD-Sperre gemerkt) und Player starten.
+  Future<void> _initMediaKit() async {
+    if (_mode == 'sd') {
+      _activeQuality = 'sd';
+    } else if (_mode == 'hd') {
+      _activeQuality = 'hd';
+    } else {
+      _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+    }
+    await _configurePlayer();
+    await _startMediaKit();
   }
 
   // ---- media_kit / RTSP (Desktop) ----
   Future<void> _configurePlayer() async {
     final p = _player!.platform;
     if (p is NativePlayer) {
+      // go2rtc kann RTSP nur über TCP (UDP -> 461). hwdec/vo/Surface verwaltet
+      // media_kit auf Android selbst (VideoController) — hier NICHT anfassen,
+      // sonst bricht die Textur-Einrichtung (Resize 1x1 / schwarzes Bild).
       await p.setProperty('rtsp-transport', 'tcp');
-      await p.setProperty('hwdec', 'no');
-      await p.setProperty('cache', 'yes');
-      await p.setProperty('cache-secs', '1.5');
-      await p.setProperty('demuxer-readahead-secs', '1.5');
     }
+  }
+
+  String _lastUrl = '';
+  Timer? _videoWatchdog;
+  int _mkRestarts = 0;
+  Duration _lastPos = Duration.zero;
+  int _stallTicks = 0;
+
+  /// Wartet, bis media_kit der Video-Surface eine Größe zugewiesen hat
+  /// (controller.rect != null). Das passiert nach dem ersten Layout des
+  /// Video-Widgets; erst dann existiert die native Surface für den Decoder.
+  Future<void> _waitForSurfaceRect() async {
+    final c = _mkController;
+    if (c == null || c.rect.value != null) return;
+    final done = Completer<void>();
+    void check() {
+      if (c.rect.value != null && !done.isCompleted) done.complete();
+    }
+    c.rect.addListener(check);
+    check();
+    await done.future.timeout(const Duration(seconds: 5), onTimeout: () {});
+    c.rect.removeListener(check);
+  }
+
+  /// Stall-Wächter: prüft alle 2 s, ob die Wiedergabe weiterläuft. Steht die
+  /// Position (eingefrorene Pipeline), wird — nachdem die Surface sicher da ist —
+  /// der Stream neu geöffnet. Läuft die Wiedergabe, wird der Zähler genullt.
+  void _armVideoWatchdog() {
+    _videoWatchdog?.cancel();
+    _lastPos = _player?.state.position ?? Duration.zero;
+    _stallTicks = 0;
+    _videoWatchdog = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!mounted || _player == null || _lastUrl.isEmpty) return;
+      final st = _player!.state;
+      final advancing = st.position != _lastPos;
+      _lastPos = st.position;
+      if (advancing && (st.width ?? 0) > 0) {
+        _stallTicks = 0;
+        _mkRestarts = 0; // läuft stabil
+        return;
+      }
+      _stallTicks++;
+      if (_stallTicks >= 3 && _mkRestarts < 6) {
+        // ~6 s kein Fortschritt -> neu öffnen. Hardware-Decoding bleibt (kein
+        // Software-Ausweichen — das wäre auf schwächeren Geräten zu schwer);
+        // vor dem Öffnen ist die Surface durch _waitForSurfaceRect sicher da.
+        _mkRestarts++;
+        _stallTicks = 0;
+        // ignore: avoid_print
+        print('MK: Stillstand -> Stream neu öffnen (#$_mkRestarts)');
+        try {
+          await _waitForSurfaceRect();
+          await _player!.open(Media(_lastUrl));
+        } catch (_) {}
+      }
+    });
   }
 
   Future<void> _startMediaKit() async {
@@ -287,8 +438,8 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       String url;
       if (widget.config.hasDirectStream) {
-        url = widget.config.rtspUrl.trim();
-        _sourceLabel = 'Direkt (go2rtc)';
+        url = widget.config.rtspUrlForQuality(_activeQuality);
+        _sourceLabel = 'go2rtc RTSP · $_qualityLabel · Ton';
       } else {
         final client = HaClient(widget.config);
         if (!await client.ping()) {
@@ -297,8 +448,17 @@ class _CameraScreenState extends State<CameraScreen> {
         url = await client.getCameraHlsUrl(widget.config.cameraEntity);
         _sourceLabel = 'Home Assistant (HLS)';
       }
+      _lastUrl = url;
+      await _waitForSurfaceRect(); // Surface muss eine Größe haben, bevor der
+      // Hardware-Decoder startet (sonst "surface NULL")
+      // ignore: avoid_print
+      print('MK: öffne $url');
+      await _player!.setVolume(100); // Ton im Vollbild an
       await _player!.open(Media(url));
+      // ignore: avoid_print
+      print('MK: open() zurückgekehrt für $url');
       if (mounted) setState(() => _playing = true);
+      _armVideoWatchdog();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -314,6 +474,11 @@ class _CameraScreenState extends State<CameraScreen> {
       _fallingBack = false;
       _mcRetries = 0;
       _transport = 'rtsp'; // manuelles Neuladen probiert wieder den Weg mit Ton
+      await _stopAudio();
+      _audioStartTimer?.cancel();
+      _audioStartTimer = Timer(const Duration(milliseconds: 2500), () {
+        if (mounted) _startAudio();
+      });
       if (_mode == 'sd') {
         _activeQuality = 'sd';
       } else if (_mode == 'hd') {
@@ -336,6 +501,10 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _liveTimer?.cancel();
     _hideTimer?.cancel();
+    _audioStartTimer?.cancel();
+    _videoWatchdog?.cancel();
+    _mkLog?.cancel();
+    _stopAudio();
     _backFocus.dispose();
     _qualityFocus.dispose();
     _refreshFocus.dispose();
@@ -441,7 +610,7 @@ class _CameraScreenState extends State<CameraScreen> {
                               onPressed: _back,
                             ),
                             const Spacer(),
-                            if (_useExo) ...[
+                            if (_qualityAvailable) ...[
                               _PillButton(
                                 icon: Icons.hd_outlined,
                                 label: _qualityLabel,
@@ -507,8 +676,15 @@ class _CameraScreenState extends State<CameraScreen> {
       }
       return _Overlay(status: _status, error: false, onRetry: _retry);
     }
-    if (_playing && _mkController != null) {
-      return Video(controller: _mkController!, fit: BoxFit.contain);
+    if (_mkController != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Video(controller: _mkController!, fit: BoxFit.contain),
+          if (!_playing)
+            _Overlay(status: _status, error: false, onRetry: _retry),
+        ],
+      );
     }
     return _Overlay(status: _status, error: false, onRetry: _retry);
   }

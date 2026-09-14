@@ -45,7 +45,7 @@ jobs:
       - name: Versionsnummer aus Lauf-Nummer
         id: ver
         run: |
-          CODE=$((100 + ${{ github.run_number }}))
+          CODE=$((1200 + ${{ github.run_number }}))
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "name=1.0.$CODE" >> "$GITHUB_OUTPUT"
 

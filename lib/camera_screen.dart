@@ -191,6 +191,14 @@ class _CameraScreenState extends State<CameraScreen> {
       if (np is NativePlayer) {
         await np.setProperty('rtsp-transport', 'tcp'); // go2rtc nur TCP
         await np.setProperty('vid', 'no'); // reiner Ton -> kein Video/Surface
+        // Puffer gegen "Audio device underrun" -> sonst hungert die Ausgabe aus
+        // und der Ton klingt verzerrt / nach falscher Geschwindigkeit.
+        await np.setProperty('cache', 'yes');
+        await np.setProperty('cache-secs', '2');
+        await np.setProperty('demuxer-readahead-secs', '2');
+        // Ausgabe mit nativer Geräte-Samplerate (TV = 48 kHz); Kamera liefert
+        // 8 kHz -> libmpv resampled sauber hoch.
+        await np.setProperty('audio-samplerate', '48000');
       }
       await p.setVolume(100);
       await p.open(Media(url), play: true);

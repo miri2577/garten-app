@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'camera_screen.dart';
 import 'garden_data.dart';
 import 'ha_client.dart';
+import 'irrigation_data.dart';
+import 'irrigation_detail_screen.dart';
 import 'live_video.dart';
 import 'soil_detail_screen.dart';
 import 'theme.dart';
@@ -94,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _dataTimer?.cancel();
+    _irrigation.dispose();
     super.dispose();
   }
 
@@ -101,8 +104,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String get _sdRtsp =>
       widget.config.rtspUrl.replaceFirst(RegExp(r'garten(_sd)?'), 'garten_sd');
 
-  // Testdaten, bis echte Sensoren angebunden sind.
+  // Testdaten, bis echte Sensoren/Ventile angebunden sind.
   final SoilMoisture _soil = demoSoilMoisture();
+  final IrrigationController _irrigation = demoIrrigation();
 
   void _openCamera() {
     Navigator.of(context).push(MaterialPageRoute(
@@ -116,6 +120,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _openSoil() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SoilDetailScreen(data: _soil),
+    ));
+  }
+
+  void _openIrrigation() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => IrrigationDetailScreen(controller: _irrigation),
     ));
   }
 
@@ -172,11 +182,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             _WeatherCard(weather: weather),
                             _SunCard(sun: sun, sunrise: sunrise, sunset: sunset),
                             _SoilCard(data: _soil, onSelect: _openSoil),
-                            const _PlaceholderCard(
-                              icon: Icons.water_drop,
-                              title: 'Bewässerung',
-                              hint: 'kommt später',
-                            ),
+                            _IrrigationCard(
+                                controller: _irrigation,
+                                onSelect: _openIrrigation),
                             _SettingsCard(onSelect: widget.onOpenSettings),
                           ],
                         ),
@@ -576,34 +584,81 @@ class _SoilCard extends StatelessWidget {
   }
 }
 
-class _PlaceholderCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String hint;
-  const _PlaceholderCard(
-      {required this.icon, required this.title, required this.hint});
+class _IrrigationCard extends StatelessWidget {
+  final IrrigationController controller;
+  final VoidCallback onSelect;
+  const _IrrigationCard({required this.controller, required this.onSelect});
+
+  static const _blue = Color(0xFF2E77B0);
 
   @override
   Widget build(BuildContext context) {
-    return _FocusCard(
-      child: Opacity(
-        opacity: 0.55,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 30),
-              const Spacer(),
-              Text(title, style: const TextStyle(fontSize: 20)),
-              const SizedBox(height: 4),
-              Text(hint,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        String big;
+        String sub;
+        IconData subIcon;
+        Color subColor = scheme.onSurfaceVariant;
+        switch (controller.summary) {
+          case IrrigationSummary.running:
+            final z = controller.runningZone!;
+            big = 'Läuft';
+            sub = '${z.name} · noch ${z.remaining.inMinutes} min';
+            subIcon = Icons.water_drop;
+            subColor = _blue;
+          case IrrigationSummary.autoPaused:
+            big = 'Pausiert';
+            sub = 'Automatik';
+            subIcon = Icons.pause_circle_outline;
+          case IrrigationSummary.scheduled:
+            final z = controller.nextScheduled!;
+            final t = z.nextStart!;
+            big =
+                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+            sub = 'Nächster Start · ${z.name}';
+            subIcon = Icons.schedule;
+          case IrrigationSummary.off:
+            big = 'Aus';
+            sub = 'Automatik aktiv';
+            subIcon = Icons.autorenew;
+        }
+        return _FocusCard(
+          onSelect: onSelect,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Icon(Icons.water_drop, size: 30),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Bewässerung',
+                        style: TextStyle(fontSize: 17),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ]),
+                const Spacer(),
+                Text(big,
+                    style: const TextStyle(
+                        fontSize: 44, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Icon(subIcon, size: 17, color: subColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(sub,
+                        style: TextStyle(color: subColor),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ]),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

@@ -314,11 +314,17 @@ class _FocusCard extends StatefulWidget {
   final VoidCallback? onSelect;
   final bool autofocus;
   final Color? color;
+  // Kein sichtbarer Fokus-Effekt (kein Blur/Farbschleier/Scale). Für die
+  // Kamera-Kachel: der Milchglas-Effekt würde die Platform-View (Video)
+  // schwarz werden lassen. Dass man auf der Kachel ist, ergibt sich daraus,
+  // dass keine andere Kachel fokussiert ist.
+  final bool plainFocus;
   const _FocusCard({
     required this.child,
     this.onSelect,
     this.autofocus = false,
     this.color,
+    this.plainFocus = false,
   });
 
   @override
@@ -345,7 +351,13 @@ class _FocusCardState extends State<_FocusCard> {
           },
         ),
       },
-      child: GestureDetector(
+      // Kamera-Kachel: nur abgerundetes Bild, kein Fokus-Effekt (sonst schwarz).
+      child: widget.plainFocus
+          ? GestureDetector(
+              onTap: widget.onSelect,
+              child: ClipRRect(borderRadius: radius, child: widget.child),
+            )
+          : GestureDetector(
         onTap: widget.onSelect,
         // Fokus = Milchglas: t animiert 0 -> 1. Nicht fokussierte Kacheln
         // bleiben ruhig (t=0 = unverändert opak, kein Blur/Rand/Schatten).
@@ -434,6 +446,7 @@ class _CameraCard extends StatelessWidget {
       autofocus: autofocus,
       onSelect: onSelect,
       color: Colors.black,
+      plainFocus: true, // kein Milchglas-Effekt -> Video bleibt sichtbar
       child: Stack(
         fit: StackFit.expand,
         children: [

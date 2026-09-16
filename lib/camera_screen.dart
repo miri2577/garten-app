@@ -49,6 +49,13 @@ class _CameraScreenState extends State<CameraScreen> {
   late String _mode = widget.config.videoQuality;
   String _activeQuality = 'hd';
 
+  // HD-Downgrade gilt nur für die laufende Sitzung, nicht dauerhaft: Beim
+  // Kaltstart kann HD kurz scheitern (der einzige HW-Decoder ist noch von der
+  // Kachel belegt). Das darf HD nicht für immer sperren – beim nächsten
+  // Öffnen wird im Auto-Modus wieder HD versucht.
+  bool _hdBlockedSession = false;
+  int _hdCapFails = 0;
+
   // Explizite Fokusverwaltung für die Bedienleiste (D-Pad links/rechts).
   // Bedienelemente + Infozeile blenden sich nach kurzer Ruhe aus; jede Taste,
   // Maus- oder Touch-Aktion holt sie für ein paar Sekunden zurück.
@@ -92,6 +99,8 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    // Alt-Flag entfernen: HD wird im Auto-Modus wieder versucht.
+    HaConfig.clearHdUnsupported();
     if (_useExo) {
       _initExo();
     } else {
@@ -128,7 +137,7 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (_mode == 'hd') {
       _activeQuality = 'hd';
     } else {
-      _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+      _activeQuality = _hdBlockedSession ? 'sd' : 'hd';
     }
     await _startExo();
     // Ton bewusst verzögert: starten Video- und Audio-RTSP-Sitzung gleichzeitig,
@@ -310,12 +319,21 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     if (_mode == 'auto' && _activeQuality == 'hd' && capExceeded) {
-      await HaConfig.setHdUnsupported();
+      _hdCapFails++;
       _fallingBack = true;
-      _activeQuality = 'sd';
       await _disposeExo();
       await Future.delayed(const Duration(milliseconds: 600));
-      await _startExo();
+      if (_hdCapFails < 2) {
+        // Erster Fehlschlag: HW-Decoder ist beim Kaltstart evtl. nur kurz von
+        // der Kachel belegt -> HD gleich nochmal versuchen (nicht sperren).
+        await _startExo();
+      } else {
+        // Wiederholt: dieses Gerät schafft HD gerade nicht -> nur für DIESE
+        // Sitzung auf SD, beim nächsten Öffnen wird HD erneut versucht.
+        _hdBlockedSession = true;
+        _activeQuality = 'sd';
+        await _startExo();
+      }
       _fallingBack = false;
       return;
     }
@@ -364,7 +382,7 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (_mode == 'hd') {
       _activeQuality = 'hd';
     } else {
-      _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+      _activeQuality = _hdBlockedSession ? 'sd' : 'hd';
     }
     await _configurePlayer();
     await _startMediaKit();
@@ -492,7 +510,7 @@ class _CameraScreenState extends State<CameraScreen> {
       } else if (_mode == 'hd') {
         _activeQuality = 'hd';
       } else {
-        _activeQuality = await HaConfig.hdUnsupported() ? 'sd' : 'hd';
+        _activeQuality = _hdBlockedSession ? 'sd' : 'hd';
       }
       _exo?.removeListener(_exoListener);
       await _exo?.dispose();

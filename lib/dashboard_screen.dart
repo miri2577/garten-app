@@ -265,14 +265,13 @@ class _HeaderState extends State<_Header> {
       children: [
         Icon(Icons.eco, size: iconSize),
         const SizedBox(width: 12),
-        Flexible(
+        Expanded(
           child: Text('Garten',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style:
                   TextStyle(fontSize: titleSize, fontWeight: FontWeight.w600)),
         ),
-        const Spacer(),
         if (widget.error != null)
           Padding(
             padding: const EdgeInsets.only(right: 12),

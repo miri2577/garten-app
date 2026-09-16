@@ -54,22 +54,27 @@ class _SoilDetailScreenState extends State<SoilDetailScreen> {
                     child: const Icon(Icons.arrow_back, size: 26),
                   ),
                   const SizedBox(width: 16),
-                  const Flexible(
+                  const Expanded(
                     child: Text('Bodenfeuchte',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 30, fontWeight: FontWeight.bold)),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 16),
                   Text('Stand ${_hm(d.lastUpdate)}',
                       style: TextStyle(color: scheme.onSurfaceVariant)),
                 ],
               ),
               const SizedBox(height: 18),
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, box) {
+                child: Builder(
+                  builder: (context) {
+                    // Breite Seite-an-Seite-Ansicht auf TV/Tablet/Desktop, das
+                    // gestapelte, scrollbare Layout nur auf Handy (schmal oder
+                    // niedrig). Der Google-TV misst 960x540 dp -> breit.
+                    final scr = MediaQuery.sizeOf(context);
+                    final wide = scr.width >= 900 && scr.height >= 480;
                     final chart = Container(
                       padding: const EdgeInsets.fromLTRB(8, 14, 14, 8),
                       decoration: BoxDecoration(
@@ -87,9 +92,8 @@ class _SoilDetailScreenState extends State<SoilDetailScreen> {
                       onChanged: (w) => setState(() => _weekly = w),
                     );
 
-                    // Schmal ODER niedrig (Handy hoch/quer): alles
-                    // untereinander, scrollbar.
-                    if (box.maxWidth < 720 || box.maxHeight < 520) {
+                    // Handy (schmal oder niedrig): alles untereinander, scrollbar.
+                    if (!wide) {
                       return SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -11,8 +11,10 @@ import 'package:garten_app/soil_detail_screen.dart';
 void main() {
   final sizes = <String, Size>{
     'Handy hochkant': const Size(360, 740),
-    'Handy quer': const Size(740, 360),
+    'Handy quer (klein)': const Size(740, 360),
+    'Handy quer (groß)': const Size(915, 412),
     'Tablet quer': const Size(1024, 700),
+    'Google TV (960x540)': const Size(960, 540),
     'TV FullHD (logisch)': const Size(1280, 720),
   };
 

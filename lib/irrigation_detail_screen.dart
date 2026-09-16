@@ -69,12 +69,14 @@ class _IrrigationDetailScreenState extends State<IrrigationDetailScreen> {
                     const SizedBox(height: 16),
                   ],
                   Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, box) {
-                        // Schmal ODER niedrig (Handy hoch/quer): Zonen
-                        // untereinander, scrollbar. Nur auf großen Flächen
-                        // (TV/Tablet) nebeneinander in gleich hohen Spalten.
-                        if (box.maxWidth < 640 || box.maxHeight < 560) {
+                    child: Builder(
+                      builder: (context) {
+                        // Breite Ansicht (Zonen nebeneinander, gleich hohe
+                        // Spalten) auf TV/Tablet/Desktop; auf Handy (schmal oder
+                        // niedrig) untereinander und scrollbar. TV = 960x540 dp.
+                        final scr = MediaQuery.sizeOf(context);
+                        final wide = scr.width >= 900 && scr.height >= 480;
+                        if (!wide) {
                           return SingleChildScrollView(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,

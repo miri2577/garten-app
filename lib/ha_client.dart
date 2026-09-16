@@ -139,18 +139,15 @@ class HaConfig {
     await prefs.setString(_kQuality, q);
   }
 
-  /// Merkt sich, ob dieses Gerät HD (2K) nicht dekodieren kann. Dann startet der
-  /// Auto-Modus direkt mit SD (spart den scheiternden HD-Versuch, der auf
-  /// schwachen Decodern die Wiedergabe blockiert).
+  /// Früher wurde ein dauerhafter HD-Sperr-Flag gespeichert. Das führte dazu,
+  /// dass ein einmaliger (oft nur vorübergehender) HD-Fehler HD für immer
+  /// deaktivierte. Der Downgrade passiert jetzt nur noch pro Sitzung; diese
+  /// Aufräumfunktion entfernt einen evtl. noch gespeicherten Alt-Flag, damit
+  /// der Auto-Modus wieder mit HD startet.
   static const _kHdUnsupported = 'ha_hd_unsupported';
-  static Future<bool> hdUnsupported() async {
+  static Future<void> clearHdUnsupported() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_kHdUnsupported) ?? false;
-  }
-
-  static Future<void> setHdUnsupported() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kHdUnsupported, true);
+    await prefs.remove(_kHdUnsupported);
   }
 
   static String _stripSlash(String s) =>

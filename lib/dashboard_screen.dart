@@ -109,12 +109,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final IrrigationController _irrigation = demoIrrigation();
 
   void _openCamera() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CameraScreen(
-        config: widget.config,
-        onOpenSettings: widget.onOpenSettings,
-      ),
-    ));
+    // Nur fürs Vollbild gibt die Live-Kachel den HW-Decoder frei (Vollbild
+    // braucht ihn). Detailseiten/Einstellungen pausieren die Kachel nur.
+    liveTileReleaseForFullscreen = true;
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => CameraScreen(
+            config: widget.config,
+            onOpenSettings: widget.onOpenSettings,
+          ),
+        ))
+        .then((_) => liveTileReleaseForFullscreen = false);
   }
 
   void _openSoil() {

@@ -9,6 +9,14 @@ import 'package:video_player/video_player.dart';
 
 import 'main.dart' show routeObserver;
 
+/// Nur solange das Kamera-Vollbild geöffnet wird/ist, gibt die Live-Kachel den
+/// einzelnen MediaTek-Hardware-Decoder frei. Bei allen anderen Seiten (Detail,
+/// Einstellungen) wird die Kachel nur pausiert. Grund: das ständige Freigeben +
+/// Neu-Erzeugen des Decoders (C2MtkVdec) bei jedem Seiten-Öffnen/-Schließen
+/// programmierte die MediaTek-Display-Pipeline um -> das Panel-Bild verschob
+/// sich (Scaler-Versatz), teils bis in den TV-Startbildschirm.
+bool liveTileReleaseForFullscreen = false;
+
 /// Wiederverwendbare Live-Videoansicht.
 ///
 /// - **Android:** ExoPlayer (video_player) auf HLS.
@@ -108,15 +116,47 @@ class _LiveVideoState extends State<LiveVideo> with RouteAware {
     }
   }
 
-  // Vollbild kommt darüber -> Decoder KOMPLETT FREIGEBEN (nicht nur pausieren),
-  // damit das Vollbild den einzigen Hardware-Decoder bekommt. Zurück -> neu starten.
+  // Kamera-Vollbild kommt darüber -> Decoder KOMPLETT FREIGEBEN (das Vollbild
+  // braucht den einzigen HW-Decoder). Andere Seiten (Detail/Einstellungen) ->
+  // nur PAUSIEREN (Decoder bleibt, kein Neu-Erzeugen -> kein Scaler-Versatz).
   @override
-  void didPushNext() => _release();
+  void didPushNext() {
+    if (liveTileReleaseForFullscreen) {
+      _release();
+    } else {
+      _pause();
+    }
+  }
+
   @override
-  void didPopNext() => _restart();
+  void didPopNext() {
+    if (_exo == null && _player == null) {
+      _restart(); // war freigegeben (Vollbild) -> neu aufbauen
+    } else {
+      _resume(); // war nur pausiert -> weiterlaufen lassen
+    }
+  }
+
+  void _pause() {
+    _liveTimer?.cancel();
+    _liveTimer = null;
+    _exo?.pause();
+    _player?.pause();
+  }
+
+  void _resume() {
+    final c = _exo;
+    if (c != null) {
+      c.play();
+      _liveTimer ??=
+          Timer.periodic(const Duration(seconds: 12), (_) => _keepLive());
+    }
+    _player?.play();
+  }
 
   Future<void> _release() async {
     _liveTimer?.cancel();
+    _liveTimer = null;
     await _exo?.dispose();
     _exo = null;
     await _player?.dispose();

@@ -706,12 +706,13 @@ class _UpdateBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: scheme.primaryContainer,
+        color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
-          Icon(Icons.system_update, color: scheme.onPrimaryContainer),
+          Icon(Icons.system_update, color: scheme.onSurface),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -719,7 +720,7 @@ class _UpdateBanner extends StatelessWidget {
                   ? 'Lädt Update … ${(progress * 100).round()} %'
                   : 'Neue Version verfügbar${info.versionName.isNotEmpty ? " (${info.versionName})" : ""}',
               style: TextStyle(
-                  color: scheme.onPrimaryContainer,
+                  color: scheme.onSurface,
                   fontSize: 17,
                   fontWeight: FontWeight.w600),
             ),
@@ -731,7 +732,7 @@ class _UpdateBanner extends StatelessWidget {
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 value: progress > 0 ? progress : null,
-                color: scheme.onPrimaryContainer,
+                color: scheme.onSurface,
               ),
             )
           else ...[
@@ -739,6 +740,10 @@ class _UpdateBanner extends StatelessWidget {
             const SizedBox(width: 8),
             FilledButton.icon(
               autofocus: true,
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.inverseSurface,
+                foregroundColor: scheme.onInverseSurface,
+              ),
               onPressed: onUpdate,
               icon: const Icon(Icons.download),
               label: const Text('Aktualisieren'),

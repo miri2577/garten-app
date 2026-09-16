@@ -239,16 +239,16 @@ class _ZoneCard extends StatelessWidget {
             FocusFrost(
               onSelect: onStart,
               radius: 14,
-              color: scheme.primary,
+              color: scheme.inverseSurface,
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.play_arrow, size: 20, color: scheme.onPrimary),
+                  Icon(Icons.play_arrow, size: 20, color: scheme.onInverseSurface),
                   const SizedBox(width: 8),
                   Text('Jetzt bewässern',
                       style: TextStyle(
                           fontWeight: FontWeight.w600,
-                          color: scheme.onPrimary)),
+                          color: scheme.onInverseSurface)),
                 ]),
               ),
             ),
@@ -287,7 +287,7 @@ class _AutomatikBar extends StatelessWidget {
       child: Row(
         children: [
           Icon(paused ? Icons.pause_circle_outline : Icons.autorenew,
-              color: paused ? scheme.onSurfaceVariant : scheme.primary),
+              color: paused ? scheme.onSurfaceVariant : scheme.onSurface),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -352,7 +352,7 @@ class _StartDialogState extends State<_StartDialog> {
             const SizedBox(height: 14),
             // Zone + gewählte Dauer klar anzeigen
             Row(children: [
-              Icon(Icons.place_outlined, color: scheme.primary),
+              Icon(Icons.place_outlined, color: scheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Text('Zone: ${widget.zone.name}',
                   style: const TextStyle(
@@ -360,7 +360,7 @@ class _StartDialogState extends State<_StartDialog> {
             ]),
             const SizedBox(height: 8),
             Row(children: [
-              Icon(Icons.timer_outlined, color: scheme.primary),
+              Icon(Icons.timer_outlined, color: scheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Text('Dauer: $_minutes Minuten',
                   style: const TextStyle(
@@ -377,7 +377,7 @@ class _StartDialogState extends State<_StartDialog> {
                     onSelect: () => setState(() => _minutes = m),
                     radius: 12,
                     color: m == _minutes
-                        ? scheme.primary
+                        ? scheme.inverseSurface
                         : scheme.surfaceContainerHighest,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 18, vertical: 10),
@@ -385,7 +385,7 @@ class _StartDialogState extends State<_StartDialog> {
                         style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: m == _minutes
-                                ? scheme.onPrimary
+                                ? scheme.onInverseSurface
                                 : scheme.onSurface)),
                   ),
               ],
@@ -407,16 +407,16 @@ class _StartDialogState extends State<_StartDialog> {
                 FocusFrost(
                   onSelect: () => Navigator.of(context).pop(_minutes),
                   radius: 12,
-                  color: scheme.primary,
+                  color: scheme.inverseSurface,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.play_arrow, size: 20, color: scheme.onPrimary),
+                    Icon(Icons.play_arrow, size: 20, color: scheme.onInverseSurface),
                     const SizedBox(width: 6),
                     Text('Starten',
                         style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: scheme.onPrimary)),
+                            color: scheme.onInverseSurface)),
                   ]),
                 ),
               ],

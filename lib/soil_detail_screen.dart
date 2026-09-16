@@ -243,13 +243,13 @@ class _RangeButton extends StatelessWidget {
     return FocusFrost(
       onSelect: onTap,
       radius: 14,
-      color: active ? scheme.primary : scheme.surfaceContainerHighest,
+      color: active ? scheme.inverseSurface : scheme.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Text(
         label,
         style: TextStyle(
           fontWeight: FontWeight.w600,
-          color: active ? scheme.onPrimary : scheme.onSurface,
+          color: active ? scheme.onInverseSurface : scheme.onSurface,
         ),
       ),
     );
@@ -312,15 +312,15 @@ class _SensorCard extends StatelessWidget {
             const SizedBox(height: 6),
             Row(children: [
               Icon(Icons.water_drop_outlined,
-                  size: 15, color: scheme.primary),
+                  size: 15, color: scheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Expanded(
                 child: Text('Bewässerung: ${sensor.zone}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: scheme.primary)),
+                    style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
               ),
-              Icon(Icons.chevron_right, size: 18, color: scheme.primary),
+              Icon(Icons.chevron_right, size: 18, color: scheme.onSurfaceVariant),
             ]),
           ],
         ),

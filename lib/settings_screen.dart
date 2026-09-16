@@ -125,6 +125,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.inverseSurface,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onInverseSurface,
+                ),
                 onPressed: _busy ? null : _saveAndTest,
                 icon: _busy
                     ? const SizedBox(

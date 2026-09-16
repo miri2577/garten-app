@@ -779,7 +779,7 @@ BoxDecoration _frostDeco(double t, BorderRadius radius) => BoxDecoration(
 /// Icon/Text-Farbe: über der dunklen Fläche weiß, auf der hellen Milchglas-
 /// Fläche dunkel — damit ohne Fokus wie mit Fokus gut lesbar.
 Color _frostIcon(double t) =>
-    Color.lerp(Colors.white, const Color(0xFF17301F), t)!;
+    Color.lerp(Colors.white, const Color(0xFF1A1C1A), t)!;
 
 /// Fokussierbare Pille mit Symbol + Text (z.B. Qualitätsumschalter).
 class _PillButton extends StatefulWidget {
@@ -903,6 +903,10 @@ class _Overlay extends StatelessWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               autofocus: true,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.92),
+                foregroundColor: const Color(0xFF1A1C1A),
+              ),
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: const Text('Erneut versuchen'),

@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'camera_screen.dart';
+import 'garden_data.dart';
 import 'ha_client.dart';
 import 'live_video.dart';
+import 'soil_detail_screen.dart';
 import 'theme.dart';
 import 'updater.dart';
 
@@ -99,12 +101,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String get _sdRtsp =>
       widget.config.rtspUrl.replaceFirst(RegExp(r'garten(_sd)?'), 'garten_sd');
 
+  // Testdaten, bis echte Sensoren angebunden sind.
+  final SoilMoisture _soil = demoSoilMoisture();
+
   void _openCamera() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CameraScreen(
         config: widget.config,
         onOpenSettings: widget.onOpenSettings,
       ),
+    ));
+  }
+
+  void _openSoil() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SoilDetailScreen(data: _soil),
     ));
   }
 
@@ -160,11 +171,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             _WeatherCard(weather: weather),
                             _SunCard(sun: sun, sunrise: sunrise, sunset: sunset),
-                            const _PlaceholderCard(
-                              icon: Icons.grass,
-                              title: 'Bodenfeuchte',
-                              hint: 'kommt mit den Sensoren',
-                            ),
+                            _SoilCard(data: _soil, onSelect: _openSoil),
                             const _PlaceholderCard(
                               icon: Icons.water_drop,
                               title: 'Bewässerung',
@@ -516,6 +523,57 @@ class _SunCard extends StatelessWidget {
         Text(value,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       ]);
+}
+
+class _SoilCard extends StatelessWidget {
+  final SoilMoisture data;
+  final VoidCallback onSelect;
+  const _SoilCard({required this.data, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final status = data.status;
+    // Struktur identisch zur Wetter-Kachel (Icon+Label 17, Spacer, großer Wert
+    // 44/w600, Untertitel-Zeile) — für konsistente Abstände.
+    return _FocusCard(
+      onSelect: onSelect,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.grass, size: 30),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Bodenfeuchte',
+                    style: TextStyle(fontSize: 17),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ]),
+            const Spacer(),
+            Text('${data.average} %',
+                style:
+                    const TextStyle(fontSize: 44, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Row(children: [
+              Icon(status.icon, size: 17, color: status.color),
+              const SizedBox(width: 6),
+              Text(status.label,
+                  style: TextStyle(
+                      color: status.color, fontWeight: FontWeight.w600)),
+              if (data.anyOffline) ...[
+                Text('  ·  ', style: TextStyle(color: scheme.onSurfaceVariant)),
+                Text('${data.offlineCount} Sensor offline',
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
+              ],
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PlaceholderCard extends StatelessWidget {

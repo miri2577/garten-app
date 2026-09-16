@@ -721,37 +721,65 @@ class _RoundButtonState extends State<_RoundButton> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
+    final radius = BorderRadius.circular(14);
     return Tooltip(
       message: widget.tooltip,
       child: Material(
         color: Colors.transparent,
-        shape: const CircleBorder(),
+        borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.onPressed,
           focusNode: widget.focusNode,
-          customBorder: const CircleBorder(),
+          borderRadius: radius,
           onFocusChange: (f) => setState(() => _focused = f),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: _focused ? primary : Colors.black.withValues(alpha: 0.45),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _focused ? Colors.white : Colors.white24,
-                width: 2,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: _focused ? 1 : 0),
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            builder: (context, t, _) => Transform.scale(
+              scale: 1 + 0.06 * t,
+              child: Container(
+                width: 54,
+                height: 54,
+                alignment: Alignment.center,
+                decoration: _frostDeco(t, radius),
+                child: Icon(widget.icon, color: _frostIcon(t), size: 26),
               ),
             ),
-            child: Icon(widget.icon, color: Colors.white, size: 26),
           ),
         ),
       ),
     );
   }
 }
+
+/// Fokus = Milchglas: dunkle Grundfläche -> halbtransparent aufgehellt,
+/// heller Rand + Glow. Gleiche Sprache wie die Detailseiten (nur bei Fokus).
+BoxDecoration _frostDeco(double t, BorderRadius radius) => BoxDecoration(
+      color: Color.lerp(Colors.black.withValues(alpha: 0.45),
+          Colors.white.withValues(alpha: 0.55), t),
+      borderRadius: radius,
+      border: Border.all(
+        color: Color.lerp(
+            Colors.white24, Colors.white.withValues(alpha: 0.85), t)!,
+        width: 1.6,
+      ),
+      boxShadow: t <= 0
+          ? null
+          : [
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.30 * t),
+                blurRadius: 22 * t,
+                spreadRadius: t,
+              ),
+            ],
+    );
+
+/// Icon/Text-Farbe: über der dunklen Fläche weiß, auf der hellen Milchglas-
+/// Fläche dunkel — damit ohne Fokus wie mit Fokus gut lesbar.
+Color _frostIcon(double t) =>
+    Color.lerp(Colors.white, const Color(0xFF17301F), t)!;
 
 /// Fokussierbare Pille mit Symbol + Text (z.B. Qualitätsumschalter).
 class _PillButton extends StatefulWidget {
@@ -777,7 +805,6 @@ class _PillButtonState extends State<_PillButton> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
     final radius = BorderRadius.circular(27);
     return Tooltip(
       message: widget.tooltip,
@@ -790,32 +817,33 @@ class _PillButtonState extends State<_PillButton> {
           focusNode: widget.focusNode,
           borderRadius: radius,
           onFocusChange: (f) => setState(() => _focused = f),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            decoration: BoxDecoration(
-              color: _focused ? primary : Colors.black.withValues(alpha: 0.45),
-              borderRadius: radius,
-              border: Border.all(
-                color: _focused ? Colors.white : Colors.white24,
-                width: 2,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(widget.icon, color: Colors.white, size: 22),
-                const SizedBox(width: 8),
-                Text(
-                  widget.label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: _focused ? 1 : 0),
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            builder: (context, t, _) => Transform.scale(
+              scale: 1 + 0.04 * t,
+              child: Container(
+                height: 54,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                alignment: Alignment.center,
+                decoration: _frostDeco(t, radius),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(widget.icon, color: _frostIcon(t), size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        color: _frostIcon(t),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

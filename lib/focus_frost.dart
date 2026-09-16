@@ -61,8 +61,16 @@ class _FocusFrostState extends State<FocusFrost> {
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
           builder: (context, t, child) {
-            final surface =
-                Color.lerp(baseColor, Colors.white.withValues(alpha: 0.5), t)!;
+            // Dunkle Grundflächen (z.B. Buttons mit heller Schrift) nur dezent
+            // und DECKEND aufhellen, damit der Text lesbar bleibt. Helle Karten
+            // behalten den kräftigeren, halbtransparenten Milchglas-Look.
+            final baseIsDark =
+                ThemeData.estimateBrightnessForColor(baseColor) ==
+                    Brightness.dark;
+            final frostTarget = baseIsDark
+                ? Color.lerp(baseColor, Colors.white, 0.22)!
+                : Colors.white.withValues(alpha: 0.5);
+            final surface = Color.lerp(baseColor, frostTarget, t)!;
             return Transform.scale(
               scale: 1 + 0.02 * t,
               child: DecoratedBox(

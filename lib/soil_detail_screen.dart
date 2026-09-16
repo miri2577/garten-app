@@ -54,9 +54,13 @@ class _SoilDetailScreenState extends State<SoilDetailScreen> {
                     child: const Icon(Icons.arrow_back, size: 26),
                   ),
                   const SizedBox(width: 16),
-                  const Text('Bodenfeuchte',
-                      style: TextStyle(
-                          fontSize: 30, fontWeight: FontWeight.bold)),
+                  const Flexible(
+                    child: Text('Bodenfeuchte',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 30, fontWeight: FontWeight.bold)),
+                  ),
                   const Spacer(),
                   Text('Stand ${_hm(d.lastUpdate)}',
                       style: TextStyle(color: scheme.onSurfaceVariant)),
@@ -64,60 +68,94 @@ class _SoilDetailScreenState extends State<SoilDetailScreen> {
               ),
               const SizedBox(height: 18),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Links: Zusammenfassung + Umschalter + Diagramm
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SummaryCard(data: d),
-                          const SizedBox(height: 16),
-                          _RangeToggle(
-                            weekly: _weekly,
-                            onChanged: (w) => setState(() => _weekly = w),
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.fromLTRB(8, 14, 14, 8),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: MoistureChart(
-                                data: d.averageSeries(_weekly),
-                                weekly: _weekly,
-                                lineColor: status.color,
-                              ),
-                            ),
-                          ),
-                        ],
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final chart = Container(
+                      padding: const EdgeInsets.fromLTRB(8, 14, 14, 8),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(18),
                       ),
-                    ),
-                    const SizedBox(width: 18),
-                    // Rechts: Gartenbereiche
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (var i = 0; i < d.sensors.length; i++) ...[
-                            Expanded(
-                              child: _SensorCard(
-                                sensor: d.sensors[i],
-                                onOpenZone: _openZone,
+                      child: MoistureChart(
+                        data: d.averageSeries(_weekly),
+                        weekly: _weekly,
+                        lineColor: status.color,
+                      ),
+                    );
+                    final toggle = _RangeToggle(
+                      weekly: _weekly,
+                      onChanged: (w) => setState(() => _weekly = w),
+                    );
+
+                    // Schmal ODER niedrig (Handy hoch/quer): alles
+                    // untereinander, scrollbar.
+                    if (box.maxWidth < 720 || box.maxHeight < 520) {
+                      return SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SummaryCard(data: d),
+                            const SizedBox(height: 16),
+                            Align(
+                                alignment: Alignment.centerLeft, child: toggle),
+                            const SizedBox(height: 12),
+                            SizedBox(height: 240, child: chart),
+                            const SizedBox(height: 16),
+                            for (var i = 0; i < d.sensors.length; i++) ...[
+                              SizedBox(
+                                height: 168,
+                                child: _SensorCard(
+                                  sensor: d.sensors[i],
+                                  onOpenZone: _openZone,
+                                ),
                               ),
-                            ),
-                            if (i < d.sensors.length - 1)
-                              const SizedBox(height: 14),
+                              if (i < d.sensors.length - 1)
+                                const SizedBox(height: 14),
+                            ],
                           ],
-                        ],
-                      ),
-                    ),
-                  ],
+                        ),
+                      );
+                    }
+
+                    // Breit: Diagramm links, Bereiche rechts.
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SummaryCard(data: d),
+                              const SizedBox(height: 16),
+                              toggle,
+                              const SizedBox(height: 12),
+                              Expanded(child: chart),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = 0; i < d.sensors.length; i++) ...[
+                                Expanded(
+                                  child: _SensorCard(
+                                    sensor: d.sensors[i],
+                                    onOpenZone: _openZone,
+                                  ),
+                                ),
+                                if (i < d.sensors.length - 1)
+                                  const SizedBox(height: 14),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -144,45 +182,65 @@ class _SummaryCard extends StatelessWidget {
         color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Row(
-        children: [
-          Column(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final value = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('Gesamt · Mittel aller Bereiche',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: scheme.onSurfaceVariant)),
               const SizedBox(height: 2),
               Text('${data.average} %',
                   style: const TextStyle(
                       fontSize: 52, fontWeight: FontWeight.bold, height: 1.0)),
             ],
-          ),
-          const SizedBox(width: 20),
-          Column(
+          );
+          final info = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               _StatusChip(status: status),
               const SizedBox(height: 8),
-              SizedBox(
-                width: 190,
-                child: Text(status.hint,
-                    style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
+              Text(status.hint,
+                  style: TextStyle(color: scheme.onSurfaceVariant)),
               if (data.anyOffline) ...[
                 const SizedBox(height: 8),
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.cloud_off_outlined,
                       size: 16, color: MoistureStatus.offline.color),
                   const SizedBox(width: 6),
-                  Text('${data.offlineCount} Sensor offline',
-                      style: TextStyle(color: MoistureStatus.offline.color)),
+                  Flexible(
+                    child: Text('${data.offlineCount} Sensor offline',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            TextStyle(color: MoistureStatus.offline.color)),
+                  ),
                 ]),
               ],
             ],
-          ),
-        ],
+          );
+
+          // Schmal: Wert oben, Status darunter. Breit: nebeneinander.
+          if (box.maxWidth < 380) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [value, const SizedBox(height: 14), info],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Flexible(child: value),
+              const SizedBox(width: 20),
+              Flexible(child: info),
+            ],
+          );
+        },
       ),
     );
   }
@@ -218,11 +276,14 @@ class _RangeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      _seg('24 Stunden', !weekly, () => onChanged(false)),
-      const SizedBox(width: 10),
-      _seg('7 Tage', weekly, () => onChanged(true)),
-    ]);
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _seg('24 Stunden', !weekly, () => onChanged(false)),
+        _seg('7 Tage', weekly, () => onChanged(true)),
+      ],
+    );
   }
 
   Widget _seg(String label, bool active, VoidCallback onTap) {
@@ -277,10 +338,14 @@ class _SensorCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(sensor.name,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600)),
-                const Spacer(),
+                Expanded(
+                  child: Text(sensor.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 8),
                 Text(offline ? '– %' : '${sensor.percent} %',
                     style: const TextStyle(
                         fontSize: 22, fontWeight: FontWeight.bold)),
@@ -294,9 +359,13 @@ class _SensorCard extends StatelessWidget {
                   size: 15,
                   color: offline ? MoistureStatus.offline.color : st.color),
               const SizedBox(width: 4),
-              Text(_since(sensor.lastSeen),
-                  style: TextStyle(
-                      fontSize: 12, color: scheme.onSurfaceVariant)),
+              Flexible(
+                child: Text(_since(sensor.lastSeen),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12, color: scheme.onSurfaceVariant)),
+              ),
             ]),
             const SizedBox(height: 8),
             Expanded(

@@ -51,9 +51,13 @@ class _IrrigationDetailScreenState extends State<IrrigationDetailScreen> {
                         child: const Icon(Icons.arrow_back, size: 26),
                       ),
                       const SizedBox(width: 16),
-                      const Text('Bewässerung',
-                          style: TextStyle(
-                              fontSize: 30, fontWeight: FontWeight.bold)),
+                      const Flexible(
+                        child: Text('Bewässerung',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 30, fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -65,22 +69,50 @@ class _IrrigationDetailScreenState extends State<IrrigationDetailScreen> {
                     const SizedBox(height: 16),
                   ],
                   Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < c.zones.length; i++) ...[
-                          Expanded(
-                            child: _ZoneCard(
-                              zone: c.zones[i],
-                              onStart: () => _startFlow(c.zones[i]),
-                              onStop: () => c.stop(c.zones[i]),
-                              onToggleAuto: () => c.toggleZoneAuto(c.zones[i]),
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        // Schmal ODER niedrig (Handy hoch/quer): Zonen
+                        // untereinander, scrollbar. Nur auf großen Flächen
+                        // (TV/Tablet) nebeneinander in gleich hohen Spalten.
+                        if (box.maxWidth < 640 || box.maxHeight < 560) {
+                          return SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < c.zones.length; i++) ...[
+                                  _ZoneCard(
+                                    zone: c.zones[i],
+                                    stacked: true,
+                                    onStart: () => _startFlow(c.zones[i]),
+                                    onStop: () => c.stop(c.zones[i]),
+                                    onToggleAuto: () =>
+                                        c.toggleZoneAuto(c.zones[i]),
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                              ],
                             ),
-                          ),
-                          if (i < c.zones.length - 1)
-                            const SizedBox(width: 16),
-                        ],
-                      ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var i = 0; i < c.zones.length; i++) ...[
+                              Expanded(
+                                child: _ZoneCard(
+                                  zone: c.zones[i],
+                                  onStart: () => _startFlow(c.zones[i]),
+                                  onStop: () => c.stop(c.zones[i]),
+                                  onToggleAuto: () =>
+                                      c.toggleZoneAuto(c.zones[i]),
+                                ),
+                              ),
+                              if (i < c.zones.length - 1)
+                                const SizedBox(width: 16),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -155,11 +187,13 @@ class _RunningBanner extends StatelessWidget {
 
 class _ZoneCard extends StatelessWidget {
   final IrrigationZone zone;
+  final bool stacked; // hochkant gestapelt: Karte inhaltshoch statt gestreckt
   final VoidCallback onStart;
   final VoidCallback onStop;
   final VoidCallback onToggleAuto;
   const _ZoneCard({
     required this.zone,
+    this.stacked = false,
     required this.onStart,
     required this.onStop,
     required this.onToggleAuto,
@@ -179,6 +213,7 @@ class _ZoneCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: stacked ? MainAxisSize.min : MainAxisSize.max,
         children: [
           Text(zone.name,
               style:
@@ -200,8 +235,12 @@ class _ZoneCard extends StatelessWidget {
             Icon(zone.auto ? Icons.autorenew : Icons.pause_circle_outline,
                 size: 16, color: scheme.onSurfaceVariant),
             const SizedBox(width: 6),
-            Text(zone.auto ? 'Automatik an' : 'Automatik aus',
-                style: TextStyle(color: scheme.onSurfaceVariant)),
+            Flexible(
+              child: Text(zone.auto ? 'Automatik an' : 'Automatik aus',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: scheme.onSurfaceVariant)),
+            ),
           ]),
           const SizedBox(height: 6),
           // Zeitpläne
@@ -217,7 +256,7 @@ class _ZoneCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 13, color: scheme.onSurfaceVariant)),
               ),
-          const Spacer(),
+          stacked ? const SizedBox(height: 14) : const Spacer(),
           // Aktion: läuft -> Stopp, sonst -> Jetzt bewässern
           if (running)
             FocusFrost(
@@ -229,9 +268,13 @@ class _ZoneCard extends StatelessWidget {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.stop_circle_outlined, size: 20, color: _blue),
                   SizedBox(width: 8),
-                  Text('Stopp',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600, color: _blue)),
+                  Flexible(
+                    child: Text('Stopp',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, color: _blue)),
+                  ),
                 ]),
               ),
             )
@@ -245,10 +288,14 @@ class _ZoneCard extends StatelessWidget {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.play_arrow, size: 20, color: scheme.onInverseSurface),
                   const SizedBox(width: 8),
-                  Text('Jetzt bewässern',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onInverseSurface)),
+                  Flexible(
+                    child: Text('Jetzt bewässern',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onInverseSurface)),
+                  ),
                 ]),
               ),
             ),

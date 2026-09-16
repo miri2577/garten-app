@@ -147,50 +147,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return KeyEventResult.ignored;
         },
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Header(weather: weather, error: _error),
-                const SizedBox(height: 20),
-                if (_update != null) ...[
-                  _UpdateBanner(
-                    info: _update!,
-                    installing: _installing,
-                    progress: _downloadProgress,
-                    onUpdate: _startUpdate,
-                    onDismiss: () => setState(() => _update = null),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                Expanded(
-                  child: !_loaded
-                      ? const Center(child: CircularProgressIndicator())
-                      : GridView.count(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 20,
-                          crossAxisSpacing: 20,
-                          childAspectRatio: 16 / 10,
-                          children: [
-                            _CameraCard(
-                              hlsUrl: _sdHls,
-                              rtspUrl: _sdRtsp,
-                              autofocus: true,
-                              onSelect: _openCamera,
-                            ),
-                            _WeatherCard(weather: weather),
-                            _SunCard(sun: sun, sunrise: sunrise, sunset: sunset),
-                            _SoilCard(data: _soil, onSelect: _openSoil),
-                            _IrrigationCard(
-                                controller: _irrigation,
-                                onSelect: _openIrrigation),
-                            _SettingsCard(onSelect: widget.onOpenSettings),
-                          ],
-                        ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              // Responsiv: TV/Tablet-quer = 3 Spalten, Handy-quer/klein = 2,
+              // Handy-hochkant = 1 Spalte (Raster scrollt dann).
+              final columns = w >= 900 ? 3 : (w >= 560 ? 2 : 1);
+              // Einzelspaltige (hochkant) Kacheln flacher, sonst zu hoch.
+              final aspect = columns == 1 ? 16 / 8.5 : 16 / 10;
+              final pad = w < 600 ? 16.0 : 28.0;
+              final gap = w < 600 ? 14.0 : 20.0;
+
+              final cards = <Widget>[
+                _CameraCard(
+                  hlsUrl: _sdHls,
+                  rtspUrl: _sdRtsp,
+                  autofocus: true,
+                  onSelect: _openCamera,
                 ),
-              ],
-            ),
+                _WeatherCard(weather: weather),
+                _SunCard(sun: sun, sunrise: sunrise, sunset: sunset),
+                _SoilCard(data: _soil, onSelect: _openSoil),
+                _IrrigationCard(
+                    controller: _irrigation, onSelect: _openIrrigation),
+              ];
+
+              return Padding(
+                padding: EdgeInsets.all(pad),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Header(
+                        weather: weather,
+                        error: _error,
+                        onOpenSettings: widget.onOpenSettings),
+                    SizedBox(height: w < 600 ? 14 : 20),
+                    if (_update != null) ...[
+                      _UpdateBanner(
+                        info: _update!,
+                        installing: _installing,
+                        progress: _downloadProgress,
+                        onUpdate: _startUpdate,
+                        onDismiss: () => setState(() => _update = null),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Expanded(
+                      child: !_loaded
+                          ? const Center(child: CircularProgressIndicator())
+                          : GridView.count(
+                              crossAxisCount: columns,
+                              mainAxisSpacing: gap,
+                              crossAxisSpacing: gap,
+                              childAspectRatio: aspect,
+                              children: cards,
+                            ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -205,7 +221,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class _Header extends StatefulWidget {
   final HaEntity? weather;
   final String? error;
-  const _Header({required this.weather, required this.error});
+  final Future<void> Function() onOpenSettings;
+  const _Header(
+      {required this.weather,
+      required this.error,
+      required this.onOpenSettings});
 
   @override
   State<_Header> createState() => _HeaderState();
@@ -234,27 +254,36 @@ class _HeaderState extends State<_Header> {
     final t =
         '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
     final temp = widget.weather?.attributes['temperature'];
+    // Auf schmalen Displays (Handy hochkant) kompakter: kleinere Schrift,
+    // Inline-Wetter entfällt (steht ohnehin als Kachel).
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final titleSize = narrow ? 22.0 : 30.0;
+    final clockSize = narrow ? 20.0 : 26.0;
+    final iconSize = narrow ? 26.0 : 34.0;
+
     return Row(
       children: [
-        const Icon(Icons.eco, size: 34),
+        Icon(Icons.eco, size: iconSize),
         const SizedBox(width: 12),
-        const Text('Garten',
-            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w600)),
+        Flexible(
+          child: Text('Garten',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  TextStyle(fontSize: titleSize, fontWeight: FontWeight.w600)),
+        ),
         const Spacer(),
         if (widget.error != null)
           Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Row(children: [
-              const Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 20),
-              const SizedBox(width: 6),
-              Text('offline', style: TextStyle(color: Colors.orangeAccent)),
-            ]),
+            padding: const EdgeInsets.only(right: 12),
+            child: Icon(Icons.cloud_off,
+                color: Colors.orangeAccent, size: narrow ? 20 : 22),
           ),
-        if (temp != null) ...[
+        if (temp != null && !narrow) ...[
           Icon(_conditionIcon(widget.weather!.state), size: 26),
           const SizedBox(width: 8),
           Text('$temp°', style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 20),
+          const SizedBox(width: 12),
         ],
         IconButton(
           tooltip: 'Hell/Dunkel umschalten',
@@ -263,10 +292,15 @@ class _HeaderState extends State<_Header> {
               ? Icons.light_mode
               : Icons.dark_mode),
         ),
+        IconButton(
+          tooltip: 'Einstellungen',
+          onPressed: () => widget.onOpenSettings(),
+          icon: const Icon(Icons.settings),
+        ),
         const SizedBox(width: 8),
         Text(t,
             style:
-                const TextStyle(fontSize: 26, fontWeight: FontWeight.w500)),
+                TextStyle(fontSize: clockSize, fontWeight: FontWeight.w500)),
       ],
     );
   }
@@ -659,28 +693,6 @@ class _IrrigationCard extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _SettingsCard extends StatelessWidget {
-  final Future<void> Function() onSelect;
-  const _SettingsCard({required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return _FocusCard(
-      onSelect: () => onSelect(),
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.settings, size: 34),
-            SizedBox(height: 10),
-            Text('Einstellungen', style: TextStyle(fontSize: 18)),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -282,6 +283,9 @@ class _FocusCardState extends State<_FocusCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final baseColor = widget.color ?? scheme.surfaceContainerHighest;
+    final radius = BorderRadius.circular(18);
+
     return FocusableActionDetector(
       autofocus: widget.autofocus,
       onShowFocusHighlight: (v) => setState(() => _focused = v),
@@ -295,25 +299,64 @@ class _FocusCardState extends State<_FocusCard> {
       },
       child: GestureDetector(
         onTap: widget.onSelect,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          decoration: BoxDecoration(
-            color: widget.color ?? scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: _focused ? scheme.primary : Colors.transparent,
-              width: 3,
-            ),
-            boxShadow: _focused
-                ? [
-                    BoxShadow(
-                      color: scheme.primary.withValues(alpha: 0.5),
-                      blurRadius: 18,
-                    )
-                  ]
-                : null,
-          ),
-          clipBehavior: Clip.antiAlias,
+        // Fokus = Milchglas: t animiert 0 -> 1. Nicht fokussierte Kacheln
+        // bleiben ruhig (t=0 = unverändert opak, kein Blur/Rand/Schatten).
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: _focused ? 1 : 0),
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          builder: (context, t, child) {
+            // Oberfläche: opaker Kartenton -> halbtransparent, leicht aufgehellt.
+            final surface =
+                Color.lerp(baseColor, Colors.white.withValues(alpha: 0.5), t)!;
+            return Transform.scale(
+              scale: 1 + 0.02 * t, // minimale Vergrößerung
+              child: DecoratedBox(
+                // dezenter heller Glow + weicher Schatten
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  boxShadow: t <= 0
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.22 * t),
+                            blurRadius: 22 * t,
+                            spreadRadius: t,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.10 * t),
+                            blurRadius: 16 * t,
+                            offset: Offset(0, 4 * t),
+                          ),
+                        ],
+                ),
+                child: DecoratedBox(
+                  // feiner weißer Rand (~28 % bei Fokus), im Vordergrund
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    borderRadius: radius,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.28 * t),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: radius,
+                    child: t <= 0.01
+                        ? ColoredBox(color: surface, child: child)
+                        : BackdropFilter(
+                            // Backdrop-Blur ~14 px (weich hochgeblendet)
+                            filter: ImageFilter.blur(
+                              sigmaX: 14 * t,
+                              sigmaY: 14 * t,
+                            ),
+                            child: ColoredBox(color: surface, child: child),
+                          ),
+                  ),
+                ),
+              ),
+            );
+          },
           child: widget.child,
         ),
       ),

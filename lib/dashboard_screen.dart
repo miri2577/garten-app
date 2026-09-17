@@ -58,7 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final link = deepLinkNotifier.value;
     if (link == null || !mounted) return;
     deepLinkNotifier.value = null;
-    if (isCameraLink(link) && !_cameraOpen) _openCamera();
+    if (isCameraLink(link) && !_cameraOpen) _openCamera(exitAppOnBack: true);
   }
 
   Future<void> _checkUpdate() async {
@@ -125,7 +125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final SoilMoisture _soil = demoSoilMoisture();
   final IrrigationController _irrigation = demoIrrigation();
 
-  void _openCamera() {
+  void _openCamera({bool exitAppOnBack = false}) {
     // Nur fürs Vollbild gibt die Live-Kachel den HW-Decoder frei (Vollbild
     // braucht ihn). Detailseiten/Einstellungen pausieren die Kachel nur.
     liveTileReleaseForFullscreen = true;
@@ -135,6 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (_) => CameraScreen(
             config: widget.config,
             onOpenSettings: widget.onOpenSettings,
+            exitAppOnBack: exitAppOnBack,
           ),
         ))
         .then((_) {

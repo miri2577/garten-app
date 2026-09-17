@@ -21,10 +21,14 @@ import 'ha_client.dart';
 class CameraScreen extends StatefulWidget {
   final HaConfig config;
   final Future<void> Function() onOpenSettings;
+  /// Per Deep Link (garten://camera vom TV-Launcher) geöffnet: Zurück beendet
+  /// die App, damit man direkt wieder im Launcher landet statt im Dashboard.
+  final bool exitAppOnBack;
   const CameraScreen({
     super.key,
     required this.config,
     required this.onOpenSettings,
+    this.exitAppOnBack = false,
   });
 
   @override
@@ -521,7 +525,13 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _back() => Navigator.of(context).maybePop();
+  void _back() {
+    if (widget.exitAppOnBack) {
+      SystemNavigator.pop(); // Activity beenden -> zurück zum Launcher
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
 
   @override
   void dispose() {
@@ -543,7 +553,12 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: true,
+      // Deep-Link-Modus: System-Zurück nicht auf das Dashboard poppen,
+      // sondern die App beenden (siehe exitAppOnBack).
+      canPop: !widget.exitAppOnBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && widget.exitAppOnBack) SystemNavigator.pop();
+      },
       child: Focus(
         // KEIN autofocus hier — sonst schluckt dieser Knoten den Fokus und die
         // Buttons sind per Fernbedienung nicht erreichbar. Key-Events erreichen

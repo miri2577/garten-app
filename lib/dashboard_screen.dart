@@ -13,6 +13,7 @@ import 'live_video.dart';
 import 'soil_detail_screen.dart';
 import 'theme.dart';
 import 'updater.dart';
+import 'deep_link.dart';
 
 /// Startbildschirm: Kacheln mit Live-Daten aus Home Assistant, fernbedienbar.
 class DashboardScreen extends StatefulWidget {
@@ -43,6 +44,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _refresh();
     _dataTimer = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
     _checkUpdate();
+    deepLinkNotifier.addListener(_onDeepLink);
+    // Start-Link (Kaltstart aus dem Launcher) erst nach dem ersten Frame,
+    // damit der Navigator steht.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onDeepLink());
+  }
+
+  bool _cameraOpen = false;
+
+  /// garten://camera -> direkt ins Vollbild. Läuft das Vollbild bereits
+  /// (Link kam erneut, App war im Hintergrund), nichts doppelt öffnen.
+  void _onDeepLink() {
+    final link = deepLinkNotifier.value;
+    if (link == null || !mounted) return;
+    deepLinkNotifier.value = null;
+    if (isCameraLink(link) && !_cameraOpen) _openCamera();
   }
 
   Future<void> _checkUpdate() async {
@@ -96,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _dataTimer?.cancel();
+    deepLinkNotifier.removeListener(_onDeepLink);
     _irrigation.dispose();
     super.dispose();
   }
@@ -112,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Nur fürs Vollbild gibt die Live-Kachel den HW-Decoder frei (Vollbild
     // braucht ihn). Detailseiten/Einstellungen pausieren die Kachel nur.
     liveTileReleaseForFullscreen = true;
+    _cameraOpen = true;
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => CameraScreen(
@@ -119,7 +137,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onOpenSettings: widget.onOpenSettings,
           ),
         ))
-        .then((_) => liveTileReleaseForFullscreen = false);
+        .then((_) {
+      liveTileReleaseForFullscreen = false;
+      _cameraOpen = false;
+    });
   }
 
   void _openSoil() {

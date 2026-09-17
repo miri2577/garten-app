@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'dashboard_screen.dart';
+import 'deep_link.dart';
 import 'ha_client.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
@@ -15,6 +16,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await loadTheme();
+  await initDeepLinks();
   runApp(const GartenApp());
 }
 
